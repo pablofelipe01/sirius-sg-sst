@@ -460,7 +460,7 @@ export default function InspeccionEPPPage() {
           <div className="flex items-center justify-between h-16">
             <div className="flex items-center gap-4">
               <button
-                onClick={() => router.push("/dashboard/inventario-epp")}
+                onClick={() => router.push("/dashboard/inspecciones")}
                 className="p-2 rounded-lg bg-white/10 hover:bg-white/20 text-white transition-all"
               >
                 <ChevronLeft size={20} />
