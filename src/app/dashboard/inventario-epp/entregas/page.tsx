@@ -165,6 +165,10 @@ export default function EntregasListPage() {
 
   // Exportar Excel
   const [exporting, setExporting] = useState(false);
+  const [exportMes, setExportMes] = useState(() => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  });
 
   // ── Fetch entregas ────────────────────────────────────
   const fetchEntregas = useCallback(async () => {
@@ -231,13 +235,19 @@ export default function EntregasListPage() {
   const handleExportExcel = async () => {
     setExporting(true);
     try {
-      const res = await fetch("/api/entregas-epp/exportar");
-      if (!res.ok) throw new Error("Error al generar el archivo");
+      const fetchUrl = exportMes
+        ? `/api/entregas-epp/exportar?mes=${exportMes}`
+        : "/api/entregas-epp/exportar";
+      const res = await fetch(fetchUrl);
+      if (!res.ok) {
+        const json = await res.json().catch(() => null);
+        throw new Error(json?.message || "Error al generar el archivo");
+      }
 
       const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
+      const blobUrl = URL.createObjectURL(blob);
       const a = document.createElement("a");
-      a.href = url;
+      a.href = blobUrl;
 
       // Extract filename from Content-Disposition header
       const disposition = res.headers.get("Content-Disposition");
@@ -247,10 +257,10 @@ export default function EntregasListPage() {
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
-      URL.revokeObjectURL(url);
+      URL.revokeObjectURL(blobUrl);
     } catch (err) {
       console.error("Error exporting:", err);
-      alert("Error al exportar las entregas a Excel");
+      setError(err instanceof Error ? err.message : "Error al exportar las entregas a Excel");
     } finally {
       setExporting(false);
     }
@@ -327,9 +337,15 @@ export default function EntregasListPage() {
               </div>
             </div>
             <div className="flex items-center gap-2">
+              <input
+                type="month"
+                value={exportMes}
+                onChange={(e) => setExportMes(e.target.value)}
+                className="px-2 py-1.5 rounded-lg bg-white/10 border border-white/15 text-white text-sm focus:outline-none focus:ring-1 focus:ring-green-400/40 [color-scheme:dark]"
+              />
               <button
                 onClick={handleExportExcel}
-                disabled={exporting || loading || entregas.length === 0}
+                disabled={exporting || loading}
                 className="flex items-center gap-2 px-3 py-2 rounded-lg bg-green-500/15 border border-green-400/25 text-green-300 text-sm font-semibold hover:bg-green-500/25 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 {exporting ? (

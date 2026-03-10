@@ -101,7 +101,7 @@ export async function GET() {
         idEmpleado: (f[personalFields.ID_EMPLEADO] as string) || "",
         nombreCompleto: (f[personalFields.NOMBRE_COMPLETO] as string) || "",
         numeroDocumento: (f[personalFields.NUMERO_DOCUMENTO] as string) || "",
-        tipoPersonal: (f[personalFields.TIPO_PERSONAL] as string) || "",
+        tipoPersonal: (() => { const v = f[personalFields.ROL_LOOKUP]; return (Array.isArray(v) ? v[0] : v) as string || ""; })(),
         estado: (f[personalFields.ESTADO_ACTIVIDAD] as string) || "Activo",
         fotoPerfil: fotoArray?.[0]
           ? { url: fotoArray[0].url, filename: fotoArray[0].filename }

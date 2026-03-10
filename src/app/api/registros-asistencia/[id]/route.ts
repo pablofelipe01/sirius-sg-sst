@@ -99,6 +99,7 @@ export async function GET(
         temasTratados:       temas,
         nombreConferencista: f[evtF.NOMBRE_CONFERENCISTA] as string,
         estado:              f[evtF.ESTADO] as string,
+        tieneFirmaConferencista: !!(f[evtF.FIRMA_CONFERENCISTA]),
         asistentes,
       },
     });

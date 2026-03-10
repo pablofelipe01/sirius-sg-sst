@@ -5,6 +5,11 @@ import {
   getSGSSTUrl,
   getSGSSTHeaders,
 } from "@/infrastructure/config/airtableSGSST";
+import {
+  airtableConfig,
+  getAirtableUrl,
+  getAirtableHeaders,
+} from "@/infrastructure/config/airtable";
 import { verifySigningToken } from "@/lib/signingToken";
 
 // ── AES-256-CBC Encryption ──────────────────────────────
@@ -70,6 +75,22 @@ export async function GET(request: NextRequest) {
   const temas = (ef[evtF.TEMAS_TRATADOS] as string) || "";
   const nombreEvento = temas.split("\n")[0].replace(/^[-•]\s*/, "").trim() || "Evento de Capacitación";
 
+  // Look up employee cargo from Personal table
+  let cargo = "";
+  if (payload.c) {
+    try {
+      const { personalTableId, personalFields: pFields } = airtableConfig;
+      const formula = `{${pFields.NUMERO_DOCUMENTO}}='${String(payload.c).replace(/'/g, "\\'")}'`;
+      const pUrl = `${getAirtableUrl(personalTableId)}?returnFieldsByFieldId=true&filterByFormula=${encodeURIComponent(formula)}&fields[]=${pFields.ROL_LOOKUP}&maxRecords=1`;
+      const pRes = await fetch(pUrl, { headers: getAirtableHeaders(), cache: "no-store" });
+      if (pRes.ok) {
+        const pData = await pRes.json();
+        const rec = (pData.records || [])[0];
+        if (rec) { const v = rec.fields[pFields.ROL_LOOKUP]; cargo = (Array.isArray(v) ? v[0] : v) as string || ""; }
+      }
+    } catch { /* skip */ }
+  }
+
   return NextResponse.json({
     success: true,
     data: {
@@ -79,6 +100,7 @@ export async function GET(request: NextRequest) {
       yaFirmo,
       idEmpleadoCore,
       progIds,
+      cargo,
       evento: {
         titulo: nombreEvento,
         fecha: ef[evtF.FECHA] as string,
@@ -190,11 +212,28 @@ export async function POST(request: NextRequest) {
       }
     } catch { /* non-critical */ }
 
+    // Look up employee cargo from Personal table
+    let cargo = "";
+    if (payload.c) {
+      try {
+        const { personalTableId, personalFields: pFields } = airtableConfig;
+        const formula = `{${pFields.NUMERO_DOCUMENTO}}='${String(payload.c).replace(/'/g, "\\'")}'`;
+        const pUrl = `${getAirtableUrl(personalTableId)}?returnFieldsByFieldId=true&filterByFormula=${encodeURIComponent(formula)}&fields[]=${pFields.ROL_LOOKUP}&maxRecords=1`;
+        const pRes = await fetch(pUrl, { headers: getAirtableHeaders(), cache: "no-store" });
+        if (pRes.ok) {
+          const pData = await pRes.json();
+          const rec = (pData.records || [])[0];
+          if (rec) { const v = rec.fields[pFields.ROL_LOOKUP]; cargo = (Array.isArray(v) ? v[0] : v) as string || ""; }
+        }
+      } catch { /* skip */ }
+    }
+
     return NextResponse.json({
       success: true,
       message: "¡Firma registrada exitosamente!",
       idEmpleadoCore,
       progIds,
+      cargo,
     });
   } catch (error) {
     console.error("Error en POST /api/registros-asistencia/firmar-publico:", error);

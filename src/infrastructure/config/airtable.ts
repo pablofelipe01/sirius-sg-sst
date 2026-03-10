@@ -20,6 +20,7 @@ export const airtableConfig = {
     ACCESOS_ASIGNADOS: process.env.AIRTABLE_PF_ACCESOS_ASIGNADOS!,
     ESTADO_ACTIVIDAD: process.env.AIRTABLE_PF_ESTADO_ACTIVIDAD!,
     AREAS: process.env.AIRTABLE_PF_AREAS!,
+    ROL_LOOKUP: process.env.AIRTABLE_PF_ROL_LOOKUP!,
   },
 
   // ── Field IDs - Tabla "Sistemas y Aplicaciones" ───────────

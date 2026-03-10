@@ -153,6 +153,7 @@ interface PageData {
   yaFirmo: boolean;
   idEmpleadoCore: string | null;
   progIds: string[];
+  cargo?: string;
   evento: EventoInfo;
 }
 
@@ -375,6 +376,7 @@ function EvaluarContent() {
               idEmpleadoCore={data.idEmpleadoCore!}
               nombres={data.nombre}
               cedula={data.cedula}
+              cargo={data.cargo}
               progCapId={data.progIds?.[0]}
               onFinished={() => setEvalDone(true)}
               allowSkip={false}

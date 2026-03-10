@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import crypto from "crypto";
 import fs from "fs";
 import path from "path";
@@ -383,7 +383,7 @@ const allBorders: Partial<ExcelJS.Borders> = {
 // Genera archivo Excel (.xlsx) con el formato FT-SST-029
 // Incluye firma descifrada como imagen PNG transparente
 // ══════════════════════════════════════════════════════════
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
     const sgHeaders = getSGSSTHeaders();
     const insHeaders = getInsumosHeaders();
@@ -401,15 +401,31 @@ export async function GET() {
     const { insumoTableId, insumoFields } = airtableInsumosConfig;
     const { personalTableId, personalFields } = airtableConfig;
 
+    // ── Optional month filter (YYYY-MM) ─────────────────
+    const mes = req.nextUrl.searchParams.get("mes");
+    const entregasExtraParams: Record<string, string> = {
+      [`sort[0][field]`]: entregasFields.FECHA_ENTREGA,
+      [`sort[0][direction]`]: "desc",
+    };
+    if (mes && /^\d{4}-\d{2}$/.test(mes)) {
+      const [year, month] = mes.split("-").map(Number);
+      entregasExtraParams.filterByFormula =
+        `AND(YEAR({${entregasFields.FECHA_ENTREGA}})=${year},MONTH({${entregasFields.FECHA_ENTREGA}})=${month})`;
+    }
+
     // ── 1. Fetch all data in parallel ───────────────────
     const [allEntregas, allInsumos, allPersonal] = await Promise.all([
-      fetchAllRecords(getSGSSTUrl(entregasTableId), sgHeaders, {
-        [`sort[0][field]`]: entregasFields.FECHA_ENTREGA,
-        [`sort[0][direction]`]: "desc",
-      }),
+      fetchAllRecords(getSGSSTUrl(entregasTableId), sgHeaders, entregasExtraParams),
       fetchAllRecords(getInsumosUrl(insumoTableId), insHeaders),
       fetchAllRecords(getAirtableUrl(personalTableId), authHeaders),
     ]);
+
+    if (allEntregas.length === 0) {
+      return NextResponse.json(
+        { success: false, message: mes ? `No hay entregas para el mes ${mes}` : "No hay entregas registradas" },
+        { status: 404 }
+      );
+    }
 
     // ── 2. Build lookup maps ────────────────────────────
     const insumoMap = new Map<
@@ -917,8 +933,8 @@ export async function GET() {
     const buffer = await workbook.xlsx.writeBuffer();
 
     // ── 8. Return as downloadable file ──────────────────
-    const fecha = new Date().toISOString().slice(0, 10);
-    const filename = `Entregas_EPP_Sirius_${fecha}.xlsx`;
+    const fileSuffix = mes || new Date().toISOString().slice(0, 10);
+    const filename = `Entregas_EPP_Sirius_${fileSuffix}.xlsx`;
 
     return new NextResponse(buffer, {
       status: 200,

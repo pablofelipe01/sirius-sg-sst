@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import {
@@ -29,6 +29,7 @@ import {
   UserX,
   Calendar,
   RefreshCw,
+  PenTool,
 } from "lucide-react";
 
 interface RegistroResumen {
@@ -78,6 +79,7 @@ interface RegistroDetalle {
   temasTratados: string;
   nombreConferencista: string;
   estado: string;
+  tieneFirmaConferencista: boolean;
   asistentes: AsistenteDetalle[];
 }
 
@@ -85,6 +87,136 @@ interface SigningLinkItem {
   detalleRecordId: string;
   nombre: string;
   url: string;
+}
+
+// ── Signature Canvas Component ──────────────────────────
+function SignatureCanvas({
+  onConfirm,
+  onCancel,
+  nombrePersona,
+  titulo = "Firma del Conferencista",
+}: {
+  onConfirm: (dataUrl: string) => void;
+  onCancel: () => void;
+  nombrePersona: string;
+  titulo?: string;
+}) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const isDrawing = useRef(false);
+  const lastPos = useRef({ x: 0, y: 0 });
+  const hasStrokes = useRef(false);
+  const [isEmpty, setIsEmpty] = useState(true);
+
+  const getPos = (e: React.MouseEvent | React.TouchEvent) => {
+    const canvas = canvasRef.current!;
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    if ("touches" in e) {
+      const touch = e.touches[0];
+      return { x: (touch.clientX - rect.left) * scaleX, y: (touch.clientY - rect.top) * scaleY };
+    }
+    return { x: (e.clientX - rect.left) * scaleX, y: (e.clientY - rect.top) * scaleY };
+  };
+
+  const startDraw = (e: React.MouseEvent | React.TouchEvent) => {
+    e.preventDefault();
+    isDrawing.current = true;
+    lastPos.current = getPos(e);
+    hasStrokes.current = true;
+    setIsEmpty(false);
+  };
+
+  const draw = (e: React.MouseEvent | React.TouchEvent) => {
+    if (!isDrawing.current) return;
+    e.preventDefault();
+    const ctx = canvasRef.current?.getContext("2d");
+    if (!ctx) return;
+    const pos = getPos(e);
+    ctx.beginPath();
+    ctx.moveTo(lastPos.current.x, lastPos.current.y);
+    ctx.lineTo(pos.x, pos.y);
+    ctx.strokeStyle = "#000000";
+    ctx.lineWidth = 2.5;
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    ctx.stroke();
+    lastPos.current = pos;
+  };
+
+  const stopDraw = () => { isDrawing.current = false; };
+
+  const clearCanvas = () => {
+    const ctx = canvasRef.current?.getContext("2d");
+    if (!ctx || !canvasRef.current) return;
+    ctx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
+    hasStrokes.current = false;
+    setIsEmpty(true);
+  };
+
+  const confirmSignature = () => {
+    if (!canvasRef.current || !hasStrokes.current) return;
+    onConfirm(canvasRef.current.toDataURL("image/png"));
+  };
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onCancel} />
+      <div className="relative bg-slate-900/95 backdrop-blur-xl rounded-2xl border border-white/10 w-full max-w-md overflow-hidden">
+        <div className="p-4 border-b border-white/10">
+          <h3 className="text-lg font-semibold text-white">{titulo}</h3>
+          <p className="text-sm text-white/60 mt-1">{nombrePersona}</p>
+        </div>
+        <div className="p-4">
+          <div className="relative rounded-xl overflow-hidden border border-white/20 bg-white">
+            <canvas
+              ref={canvasRef}
+              width={600}
+              height={200}
+              className="w-full h-[160px] cursor-crosshair touch-none"
+              onMouseDown={startDraw}
+              onMouseMove={draw}
+              onMouseUp={stopDraw}
+              onMouseLeave={stopDraw}
+              onTouchStart={startDraw}
+              onTouchMove={draw}
+              onTouchEnd={stopDraw}
+            />
+            {isEmpty && (
+              <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                <p className="text-gray-400 text-sm flex items-center gap-2">
+                  <PenTool className="w-4 h-4" /> Firme aquí
+                </p>
+              </div>
+            )}
+          </div>
+          <div className="flex items-center justify-between mt-4">
+            <button
+              onClick={clearCanvas}
+              className="px-4 py-2 rounded-lg bg-white/10 text-white/70 text-sm hover:bg-white/20 transition-all"
+            >
+              Limpiar
+            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={onCancel}
+                className="px-4 py-2 rounded-lg bg-white/10 text-white/70 text-sm hover:bg-white/20 transition-all"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={confirmSignature}
+                disabled={isEmpty}
+                className="px-4 py-2 rounded-lg bg-purple-500/30 border border-purple-400/40 text-white text-sm font-medium hover:bg-purple-500/40 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+              >
+                Confirmar Firma
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 const DIAS_SEMANA = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"];
@@ -103,6 +235,7 @@ export default function HistorialRegistrosPage() {
   const [error, setError] = useState<string | null>(null);
   const [exportandoId, setExportandoId] = useState<string | null>(null);
   const [exportandoPdfId, setExportandoPdfId] = useState<string | null>(null);
+  const [pdfsProgreso, setPdfsProgreso] = useState("");
 
   // ── Panel de detalle ──────────────────────────────────────
   const [detalle, setDetalle] = useState<RegistroDetalle | null>(null);
@@ -110,6 +243,10 @@ export default function HistorialRegistrosPage() {
   const [signingLinks, setSigningLinks] = useState<SigningLinkItem[]>([]);
   const [generatingLinks, setGeneratingLinks] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+
+  // ── Firma conferencista ───────────────────────────────────
+  const [firmandoConferencista, setFirmandoConferencista] = useState(false);
+  const [firmandoConferencistaLoading, setFirmandoConferencistaLoading] = useState(false);
 
   // ── Calendario state ──────────────────────────────────────
   const [programacion, setProgramacion] = useState<Programacion[]>([]);
@@ -186,6 +323,36 @@ export default function HistorialRegistrosPage() {
       setLoading(false);
     }
   }, []);
+
+  // ── Firmar conferencista y cerrar evento ──────────────────
+  const firmarConferencista = useCallback(async (firmaDataUrl: string) => {
+    if (!detalle) return;
+    setFirmandoConferencistaLoading(true);
+    try {
+      const res = await fetch("/api/registros-asistencia/firmar", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tipo: "conferencista",
+          registroRecordId: detalle.id,
+          firmaDataUrl,
+          nombre: detalle.nombreConferencista,
+        }),
+      });
+      const json = await res.json();
+      if (json.success) {
+        setDetalle((prev) => prev ? { ...prev, estado: "Finalizado", tieneFirmaConferencista: true } : prev);
+        setFirmandoConferencista(false);
+        fetchRegistros();
+      } else {
+        setError(json.message || "Error guardando firma del conferencista");
+      }
+    } catch {
+      setError("Error guardando firma del conferencista");
+    } finally {
+      setFirmandoConferencistaLoading(false);
+    }
+  }, [detalle, fetchRegistros]);
 
   // ── Fetch: calendario ─────────────────────────────────────
   const fetchProgramacion = useCallback(async () => {
@@ -307,31 +474,35 @@ export default function HistorialRegistrosPage() {
     }
   };
 
-  const exportarPDF = async (registroId: string, nombreEvento: string) => {
+  const exportarPDF = async (registroId: string, tipo?: "regular" | "copasst") => {
     setExportandoPdfId(registroId);
+    setPdfsProgreso(tipo === "copasst" ? "COPASST..." : tipo === "regular" ? "Regular..." : "Generando...");
     try {
-      const res = await fetch("/api/registros-asistencia/evaluaciones-pdf", {
+      const res = await fetch("/api/evaluaciones/resultado-pdf-unificado", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ registroRecordId: registroId }),
+        body: JSON.stringify({ registroRecordId: registroId, tipo }),
       });
       if (!res.ok) {
         const json = await res.json().catch(() => null);
-        throw new Error(json?.message || "Error al generar el PDF");
+        throw new Error(json?.message || "Error al generar PDF de evaluaciones");
       }
       const blob = await res.blob();
-      const url = window.URL.createObjectURL(blob);
+      const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `Evaluaciones_${nombreEvento.replace(/\s+/g, "_")}.pdf`;
+      const disposition = res.headers.get("Content-Disposition") || "";
+      const match = disposition.match(/filename="?([^"]+)"?/);
+      a.download = match?.[1] || "Evaluaciones.pdf";
       document.body.appendChild(a);
       a.click();
-      window.URL.revokeObjectURL(url);
+      URL.revokeObjectURL(url);
       a.remove();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Error al generar PDF de evaluaciones");
+      setError(err instanceof Error ? err.message : "Error descargando PDF de evaluaciones");
     } finally {
       setExportandoPdfId(null);
+      setPdfsProgreso("");
     }
   };
 
@@ -508,16 +679,28 @@ export default function HistorialRegistrosPage() {
                                 Excel
                               </button>
                               <button
-                                onClick={() => exportarPDF(reg.id, reg.nombreEvento)}
+                                onClick={() => exportarPDF(reg.id, "regular")}
                                 disabled={exportandoPdfId === reg.id}
                                 className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-violet-500/20 border border-violet-400/30 text-white text-xs font-medium hover:bg-violet-500/30 disabled:opacity-50 disabled:cursor-not-allowed transition-all cursor-pointer"
                               >
-                                {exportandoPdfId === reg.id ? (
+                                {exportandoPdfId === reg.id && pdfsProgreso === "Regular..." ? (
                                   <Loader2 className="w-3 h-3 animate-spin" />
                                 ) : (
                                   <FileText className="w-3 h-3" />
                                 )}
                                 Eval PDF
+                              </button>
+                              <button
+                                onClick={() => exportarPDF(reg.id, "copasst")}
+                                disabled={exportandoPdfId === reg.id}
+                                className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-amber-500/20 border border-amber-400/30 text-white text-xs font-medium hover:bg-amber-500/30 disabled:opacity-50 disabled:cursor-not-allowed transition-all cursor-pointer"
+                              >
+                                {exportandoPdfId === reg.id && pdfsProgreso === "COPASST..." ? (
+                                  <Loader2 className="w-3 h-3 animate-spin" />
+                                ) : (
+                                  <FileText className="w-3 h-3" />
+                                )}
+                                COPASST
                               </button>
                             </div>
                           </td>
@@ -908,8 +1091,43 @@ export default function HistorialRegistrosPage() {
                   })}
                 </div>
 
-                {/* Footer: exportar */}
-                <div className="px-6 py-4 border-t border-white/10 space-y-2">
+                {/* Footer: firma conferencista + exportar */}
+                <div className="px-6 py-4 border-t border-white/10 space-y-3">
+                  {/* Firma del conferencista */}
+                  <div className={`rounded-xl border p-4 ${detalle.tieneFirmaConferencista || detalle.estado === "Finalizado" ? "bg-green-500/10 border-green-500/20" : "bg-white/5 border-white/10"}`}>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm font-semibold text-white flex items-center gap-2">
+                          <PenTool className="w-4 h-4 text-purple-300" />
+                          Firma del Conferencista
+                        </p>
+                        <p className="text-xs text-white/50 mt-0.5">
+                          {detalle.nombreConferencista || "—"}
+                        </p>
+                      </div>
+                      {detalle.tieneFirmaConferencista || detalle.estado === "Finalizado" ? (
+                        <div className="flex items-center gap-1.5 text-green-400">
+                          <CheckCircle className="w-5 h-5" />
+                          <span className="text-sm font-semibold">Firmado</span>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => setFirmandoConferencista(true)}
+                          className="flex items-center gap-2 px-4 py-2 rounded-lg bg-purple-500/25 border border-purple-400/35 text-purple-200 text-sm font-semibold hover:bg-purple-500/35 transition-all cursor-pointer"
+                        >
+                          <PenTool className="w-3.5 h-3.5" />
+                          Firmar y Cerrar
+                        </button>
+                      )}
+                    </div>
+                    {!(detalle.tieneFirmaConferencista || detalle.estado === "Finalizado") && (
+                      <p className="text-[11px] text-white/40 mt-2">
+                        Al firmar, el evento quedará marcado como Finalizado
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Export buttons */}
                   <button
                     onClick={() => exportarExcel(detalle.id, detalle.nombreEvento)}
                     disabled={exportandoId === detalle.id}
@@ -919,18 +1137,36 @@ export default function HistorialRegistrosPage() {
                     Exportar Excel
                   </button>
                   <button
-                    onClick={() => exportarPDF(detalle.id, detalle.nombreEvento)}
+                    onClick={() => exportarPDF(detalle.id, "regular")}
                     disabled={exportandoPdfId === detalle.id}
                     className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-violet-500/20 border border-violet-400/30 text-white font-medium hover:bg-violet-500/30 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
                   >
-                    {exportandoPdfId === detalle.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4" />}
-                    Resultados Evaluaciones (PDF)
+                    {exportandoPdfId === detalle.id && pdfsProgreso === "Regular..." ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4" />}
+                    PDF Evaluaciones
+                  </button>
+                  <button
+                    onClick={() => exportarPDF(detalle.id, "copasst")}
+                    disabled={exportandoPdfId === detalle.id}
+                    className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-amber-500/20 border border-amber-400/30 text-white font-medium hover:bg-amber-500/30 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                  >
+                    {exportandoPdfId === detalle.id && pdfsProgreso === "COPASST..." ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4" />}
+                    PDF Evaluaciones COPASST
                   </button>
                 </div>
               </div>
             ) : null}
           </aside>
         </>
+      )}
+
+      {/* Modal firma conferencista */}
+      {firmandoConferencista && detalle && (
+        <SignatureCanvas
+          titulo="Firma del Conferencista"
+          nombrePersona={detalle.nombreConferencista || "Conferencista"}
+          onConfirm={firmarConferencista}
+          onCancel={() => setFirmandoConferencista(false)}
+        />
       )}
     </div>
   );

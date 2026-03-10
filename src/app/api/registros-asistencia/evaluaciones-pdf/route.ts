@@ -3,6 +3,7 @@ import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import fs from "fs";
 import path from "path";
+import crypto from "crypto";
 import {
   airtableSGSSTConfig,
   getSGSSTUrl,
@@ -30,6 +31,30 @@ interface EvalResult {
   estado: string;
   intento: number;
   fecha: string;
+  firmaUrl: string;
+}
+
+// ══════════════════════════════════════════════════════════
+// AES-256-CBC Decryption for signatures
+// ══════════════════════════════════════════════════════════
+const AES_SECRET = process.env.AES_SIGNATURE_SECRET || "";
+
+function decryptAES(encryptedStr: string): string {
+  const [ivB64, encB64] = encryptedStr.split(":");
+  if (!ivB64 || !encB64) throw new Error("Formato de cifrado inválido");
+  const key = crypto.createHash("sha256").update(AES_SECRET).digest();
+  const iv = Buffer.from(ivB64, "base64");
+  const decipher = crypto.createDecipheriv("aes-256-cbc", key, iv);
+  let dec = decipher.update(encB64, "base64", "utf8");
+  dec += decipher.final("utf8");
+  return dec;
+}
+
+function tryDecryptFirma(encrypted: string): string {
+  try {
+    const json = JSON.parse(decryptAES(encrypted));
+    return (json.signature as string) || "";
+  } catch { return ""; }
 }
 
 // ══════════════════════════════════════════════════════════
@@ -71,28 +96,41 @@ export async function POST(req: NextRequest) {
     const conferencista = evtFields[evtF.NOMBRE_CONFERENCISTA] as string || "";
     const progIds = (evtFields[evtF.PROGRAMACION_LINK] as string[]) || [];
 
+    // Decrypt conferencista signature
+    let firmaConferencistaUrl = "";
+    const firmaConferencistaCifrada = evtFields[evtF.FIRMA_CONFERENCISTA] as string || "";
+    if (firmaConferencistaCifrada && AES_SECRET) {
+      firmaConferencistaUrl = tryDecryptFirma(firmaConferencistaCifrada);
+    }
+
     if (!progIds.length) {
       return NextResponse.json({ success: false, message: "El evento no tiene programaciones asociadas" }, { status: 404 });
     }
 
     // ── 2. Fetch Asistentes (batched for large events) ──
     const asisIds = (evtFields[evtF.ASISTENCIA_LINK] as string[]) || [];
-    const attendeeMap: Record<string, { nombre: string; cedula: string }> = {};
+    const attendeeMap: Record<string, { nombre: string; cedula: string; firmaUrl: string }> = {};
     if (asisIds.length) {
       const asisBatch = 50; // Airtable formula length safety
       for (let i = 0; i < asisIds.length; i += asisBatch) {
         const batch = asisIds.slice(i, i + asisBatch);
         const asisFormula = `OR(${batch.map(id => `RECORD_ID()='${id}'`).join(",")})`;
-        const asisUrl = `${base(asistenciaCapacitacionesTableId)}?returnFieldsByFieldId=true&filterByFormula=${encodeURIComponent(asisFormula)}&fields[]=${aF.NOMBRES}&fields[]=${aF.CEDULA}&fields[]=${aF.ID_EMPLEADO_CORE}`;
+        const asisUrl = `${base(asistenciaCapacitacionesTableId)}?returnFieldsByFieldId=true&filterByFormula=${encodeURIComponent(asisFormula)}&fields[]=${aF.NOMBRES}&fields[]=${aF.CEDULA}&fields[]=${aF.ID_EMPLEADO_CORE}&fields[]=${aF.FIRMA}`;
         const asisRes = await fetch(asisUrl, { headers, cache: "no-store" });
         if (asisRes.ok) {
           const asisData = await asisRes.json();
           for (const r of (asisData.records || []) as AirtableRecord[]) {
             const empId = r.fields[aF.ID_EMPLEADO_CORE] as string;
             if (empId) {
+              let firmaUrl = "";
+              const firmaCifrada = r.fields[aF.FIRMA] as string || "";
+              if (firmaCifrada && AES_SECRET) {
+                firmaUrl = tryDecryptFirma(firmaCifrada);
+              }
               attendeeMap[empId] = {
                 nombre: r.fields[aF.NOMBRES] as string || "",
                 cedula: r.fields[aF.CEDULA] as string || "",
+                firmaUrl,
               };
             }
           }
@@ -174,6 +212,8 @@ export async function POST(req: NextRequest) {
     const results: EvalResult[] = evalRecords.map(r => {
       const plantillaArr = (r.fields[eF.PLANTILLA] as string[]) || [];
       const plId = plantillaArr[0] || "";
+      const empId = r.fields[eF.ID_EMPLEADO] as string || "";
+      const attendee = attendeeMap[empId];
       return {
         id: r.id,
         nombres: r.fields[eF.NOMBRES] as string || "",
@@ -187,6 +227,7 @@ export async function POST(req: NextRequest) {
         estado: r.fields[eF.ESTADO] as string || "",
         intento: Number(r.fields[eF.INTENTO]) || 1,
         fecha: r.fields[eF.FECHA] as string || "",
+        firmaUrl: attendee?.firmaUrl || "",
       };
     });
 
@@ -209,10 +250,11 @@ export async function POST(req: NextRequest) {
       ? Math.round((bestResults.reduce((s, r) => s + r.porcentaje, 0) / bestResults.length) * 100) / 100
       : 0;
 
-    // ── 7. Generate PDF ─────────────────────────────────
-    const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "letter" });
+    // ── 7. Generate PDF (Excel-like format per employee) ──
+    const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "letter" });
     const pageWidth = doc.internal.pageSize.getWidth();
-    const margin = 15;
+    const pageHeight = doc.internal.pageSize.getHeight();
+    const margin = 12;
     const contentWidth = pageWidth - margin * 2;
 
     // Load logo
@@ -223,69 +265,120 @@ export async function POST(req: NextRequest) {
       logoBase64 = `data:image/png;base64,${logoBuffer.toString("base64")}`;
     } catch { /* no logo */ }
 
-    // Format date
+    // Format date helper
     const formatFecha = (raw: string) => {
       if (!raw) return "—";
       try {
         const d = new Date(raw + "T12:00:00");
         return d.toLocaleDateString("es-CO", {
           timeZone: "America/Bogota",
-          weekday: "long",
+          day: "2-digit",
+          month: "2-digit",
           year: "numeric",
-          month: "long",
-          day: "numeric",
         });
       } catch { return raw; }
     };
 
-    // ── Header ──────────────────────────────────────────
     let y = margin;
 
+    // ── Header: Logo + Company ──────────────────────────
+    const headerH = 14;
+    doc.setFillColor(239, 239, 239);
+    doc.setDrawColor(128, 128, 128);
+    doc.setLineWidth(0.3);
+    // Logo cell
+    doc.rect(margin, y, 45, headerH * 2, "FD");
     if (logoBase64) {
-      try {
-        doc.addImage(logoBase64, "PNG", margin, y, 40, 14);
-      } catch { /* skip logo */ }
+      try { doc.addImage(logoBase64, "PNG", margin + 2, y + 2, 41, headerH * 2 - 4); } catch { /* skip */ }
     }
-
-    doc.setFontSize(8);
-    doc.setTextColor(120, 120, 120);
-    doc.text("Sirius Regenerative Solutions S.A.S. ZOMAC", pageWidth - margin, y + 4, { align: "right" });
-    doc.text("Sistema de Gestión de Seguridad y Salud en el Trabajo", pageWidth - margin, y + 8, { align: "right" });
-
-    y += 20;
-
-    // Title
-    doc.setFontSize(14);
-    doc.setTextColor(1, 84, 172); // #0154AC
+    // Company name
+    doc.rect(margin + 45, y, contentWidth - 45 - 80, headerH, "FD");
+    doc.setFontSize(11);
     doc.setFont("helvetica", "bold");
-    doc.text("Informe de Resultados de Evaluaciones", pageWidth / 2, y, { align: "center" });
-    y += 8;
+    doc.setTextColor(0, 0, 0);
+    doc.text("SIRIUS REGENERATIVE SOLUTIONS S.A.S. ZOMAC", margin + 45 + (contentWidth - 45 - 80) / 2, y + 9, { align: "center" });
+    // Code cell (top right)
+    doc.rect(margin + contentWidth - 80, y, 80, headerH, "FD");
+    doc.setFontSize(7.5);
+    doc.setFont("helvetica", "bold");
+    doc.text("NIT: 901.377.064-8", margin + contentWidth - 40, y + 9, { align: "center" });
 
-    // Event info
-    doc.setFontSize(9);
-    doc.setTextColor(60, 60, 60);
+    y += headerH;
+    // Second header row
+    doc.rect(margin + 45, y, contentWidth - 45 - 80, headerH, "FD");
+    doc.setFontSize(8);
+    doc.text("SISTEMA DE GESTIÓN DE SEGURIDAD Y SALUD EN EL TRABAJO", margin + 45 + (contentWidth - 45 - 80) / 2, y + 9, { align: "center" });
+    doc.rect(margin + contentWidth - 80, y, 80, headerH, "FD");
+    doc.setFontSize(7);
+    doc.text("INFORME DE RESULTADOS DE EVALUACIONES", margin + contentWidth - 40, y + 9, { align: "center" });
+    y += headerH;
+
+    // ── Title bar ───────────────────────────────────────
+    doc.setFillColor(200, 200, 200);
+    doc.rect(margin, y, contentWidth, 10, "FD");
+    doc.setFontSize(11);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(0, 0, 0);
+    doc.text("INFORME DE RESULTADOS DE EVALUACIONES", pageWidth / 2, y + 7, { align: "center" });
+    y += 10;
+
+    // ── Event info rows ─────────────────────────────────
+    const infoRowH = 8;
+    const labelBg: [number, number, number] = [239, 239, 239];
+
+    // Row 1: Evento
+    doc.setFillColor(...labelBg);
+    doc.rect(margin, y, 35, infoRowH, "FD");
+    doc.setFontSize(8);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(0, 0, 0);
+    doc.text("EVENTO:", margin + 2, y + 5.5);
+    doc.setFillColor(255, 255, 255);
+    doc.rect(margin + 35, y, contentWidth - 35, infoRowH, "FD");
     doc.setFont("helvetica", "normal");
+    doc.text(doc.splitTextToSize(nombreEvento, contentWidth - 40)[0], margin + 37, y + 5.5);
+    y += infoRowH;
 
-    const eventInfoLines = [
-      `Evento: ${nombreEvento}`,
-      `Fecha: ${formatFecha(fecha)}  |  Ciudad: ${ciudad}`,
-      `Tipo: ${tipo}  |  Conferencista: ${conferencista}`,
+    // Row 2: Ciudad | Fecha | Tipo
+    const thirdW = contentWidth / 3;
+    const labels2 = [
+      { lbl: "CIUDAD:", val: ciudad, w: thirdW },
+      { lbl: "FECHA:", val: formatFecha(fecha), w: thirdW },
+      { lbl: "TIPO:", val: tipo, w: thirdW },
     ];
-
-    for (const line of eventInfoLines) {
-      const splitLines = doc.splitTextToSize(line, contentWidth);
-      doc.text(splitLines, pageWidth / 2, y, { align: "center" });
-      y += splitLines.length * 4;
+    let xOff = margin;
+    for (const item of labels2) {
+      doc.setFillColor(...labelBg);
+      doc.rect(xOff, y, 22, infoRowH, "FD");
+      doc.setFont("helvetica", "bold");
+      doc.text(item.lbl, xOff + 2, y + 5.5);
+      doc.setFillColor(255, 255, 255);
+      doc.rect(xOff + 22, y, item.w - 22, infoRowH, "FD");
+      doc.setFont("helvetica", "normal");
+      doc.text(item.val, xOff + 24, y + 5.5);
+      xOff += item.w;
     }
+    y += infoRowH;
 
-    y += 3;
+    // Row 3: Conferencista
+    doc.setFillColor(...labelBg);
+    doc.rect(margin, y, 40, infoRowH, "FD");
+    doc.setFont("helvetica", "bold");
+    doc.text("CONFERENCISTA:", margin + 2, y + 5.5);
+    doc.setFillColor(255, 255, 255);
+    doc.rect(margin + 40, y, contentWidth - 40, infoRowH, "FD");
+    doc.setFont("helvetica", "normal");
+    doc.text(conferencista, margin + 42, y + 5.5);
+    y += infoRowH;
 
     // ── Summary box ─────────────────────────────────────
-    doc.setDrawColor(1, 84, 172);
+    y += 2;
+    const summaryColW = contentWidth / 4;
     doc.setFillColor(240, 246, 255);
-    doc.roundedRect(margin, y, contentWidth, 20, 2, 2, "FD");
+    doc.setDrawColor(1, 84, 172);
+    doc.setLineWidth(0.4);
+    doc.roundedRect(margin, y, contentWidth, 14, 2, 2, "FD");
 
-    const colW = contentWidth / 4;
     const summaryData = [
       { label: "Total Evaluados", value: String(totalEvaluados) },
       { label: "Aprobados", value: String(aprobados) },
@@ -294,35 +387,46 @@ export async function POST(req: NextRequest) {
     ];
 
     for (let i = 0; i < summaryData.length; i++) {
-      const cx = margin + colW * i + colW / 2;
-      doc.setFontSize(14);
+      const cx = margin + summaryColW * i + summaryColW / 2;
+      doc.setFontSize(12);
       doc.setFont("helvetica", "bold");
       doc.setTextColor(1, 84, 172);
-      doc.text(summaryData[i].value, cx, y + 9, { align: "center" });
-      doc.setFontSize(7);
+      doc.text(summaryData[i].value, cx, y + 7, { align: "center" });
+      doc.setFontSize(6.5);
       doc.setFont("helvetica", "normal");
       doc.setTextColor(100, 100, 100);
-      doc.text(summaryData[i].label, cx, y + 15, { align: "center" });
+      doc.text(summaryData[i].label, cx, y + 11.5, { align: "center" });
+    }
+    y += 18;
+
+    // ── Results table with signatures ───────────────────
+    // Columns: ITEM | NOMBRES | C.C. | CARGO | EVALUACIÓN | PUNTAJE | % | ESTADO | FIRMA
+    const SIG_ROW_H = 22; // mm height for rows with signature
+    const NO_SIG_ROW_H = 8; // mm height for rows without signature
+    const SIG_COL_IDX = 8; // index of FIRMA column
+
+    // Build cell image map: rowIndex → dataURL
+    const sigImageMap: Record<number, string> = {};
+    for (let i = 0; i < bestResults.length; i++) {
+      if (bestResults[i].firmaUrl) {
+        sigImageMap[i] = bestResults[i].firmaUrl;
+      }
     }
 
-    y += 26;
+    const hasFirmas = Object.keys(sigImageMap).length > 0;
+    const rowH = hasFirmas ? SIG_ROW_H : NO_SIG_ROW_H;
 
-    // ── Results table ───────────────────────────────────
-    doc.setFontSize(10);
-    doc.setFont("helvetica", "bold");
-    doc.setTextColor(40, 40, 40);
-    doc.text("Resultados Individuales", margin, y);
-    y += 5;
-
-    const tableHead = [["#", "Nombre", "C.C.", "Evaluación", "Puntaje", "%", "Estado"]];
+    const tableHead = [["ITEM", "NOMBRES Y APELLIDOS", "C.C.", "CARGO", "EVALUACIÓN", "PUNTAJE", "%", "ESTADO", "FIRMA"]];
     const tableBody = bestResults.map((r, i) => [
       String(i + 1),
       r.nombres,
       r.cedula,
+      r.cargo || "—",
       r.plantillaNombre,
-      `${r.puntajeObtenido.toFixed(2)}/${r.puntajeMaximo.toFixed(2)}`,
-      `${r.porcentaje.toFixed(2)}%`,
+      `${r.puntajeObtenido.toFixed(1)}/${r.puntajeMaximo.toFixed(1)}`,
+      `${r.porcentaje.toFixed(1)}%`,
       r.estado,
+      "", // firma placeholder – drawn via didDrawCell
     ]);
 
     autoTable(doc, {
@@ -333,47 +437,67 @@ export async function POST(req: NextRequest) {
       styles: {
         fontSize: 7.5,
         cellPadding: 2,
-        lineColor: [200, 200, 200],
-        lineWidth: 0.1,
+        lineColor: [128, 128, 128],
+        lineWidth: 0.2,
+        overflow: "linebreak",
+        minCellHeight: rowH,
       },
       headStyles: {
-        fillColor: [1, 84, 172],
+        fillColor: [64, 64, 64],
         textColor: [255, 255, 255],
         fontStyle: "bold",
         fontSize: 7.5,
         halign: "center",
+        minCellHeight: 10,
       },
       columnStyles: {
-        0: { halign: "center", cellWidth: 8 },
+        0: { halign: "center", cellWidth: 10 },
         1: { cellWidth: "auto" },
         2: { halign: "center", cellWidth: 22 },
-        3: { cellWidth: "auto" },
-        4: { halign: "center", cellWidth: 24 },
-        5: { halign: "center", cellWidth: 16 },
-        6: { halign: "center", cellWidth: 22 },
+        3: { cellWidth: 30 },
+        4: { cellWidth: "auto" },
+        5: { halign: "center", cellWidth: 22 },
+        6: { halign: "center", cellWidth: 14 },
+        7: { halign: "center", cellWidth: 22 },
+        8: { halign: "center", cellWidth: 35 },
       },
       bodyStyles: {
-        textColor: [50, 50, 50],
+        textColor: [0, 0, 0],
+        valign: "middle",
       },
       alternateRowStyles: {
-        fillColor: [248, 250, 255],
+        fillColor: [247, 247, 247],
       },
       didParseCell: (data) => {
-        if (data.section === "body" && data.column.index === 6) {
+        if (data.section === "body" && data.column.index === 7) {
           const val = data.cell.raw as string;
           if (val === "Aprobada") {
-            data.cell.styles.textColor = [22, 163, 74]; // green-600
+            data.cell.styles.textColor = [22, 163, 74];
             data.cell.styles.fontStyle = "bold";
           } else if (val === "No Aprobada") {
-            data.cell.styles.textColor = [220, 38, 38]; // red-600
+            data.cell.styles.textColor = [220, 38, 38];
             data.cell.styles.fontStyle = "bold";
+          }
+        }
+      },
+      didDrawCell: (data) => {
+        // Draw signature images in the FIRMA column
+        if (data.section === "body" && data.column.index === SIG_COL_IDX) {
+          const imgUrl = sigImageMap[data.row.index];
+          if (imgUrl) {
+            try {
+              const ext = imgUrl.startsWith("data:image/jpeg") ? "JPEG" : "PNG";
+              const b64 = imgUrl.includes(",") ? imgUrl.split(",")[1] : imgUrl;
+              const imgW = data.cell.width - 4;
+              const imgH = data.cell.height - 4;
+              doc.addImage(b64, ext, data.cell.x + 2, data.cell.y + 2, imgW, imgH, undefined, "FAST");
+            } catch { /* skip image */ }
           }
         }
       },
       margin: { left: margin, right: margin },
     });
 
-    // Get final Y after table
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     y = (doc as any).lastAutoTable?.finalY || y + 50;
     y += 8;
@@ -389,8 +513,7 @@ export async function POST(req: NextRequest) {
           ? Math.round((plResults.reduce((s, r) => s + r.porcentaje, 0) / plResults.length) * 100) / 100
           : 0;
 
-        // Check page space
-        if (y > doc.internal.pageSize.getHeight() - 40) {
+        if (y > pageHeight - 40) {
           doc.addPage();
           y = margin;
         }
@@ -405,11 +528,12 @@ export async function POST(req: NextRequest) {
         doc.text(`  ${plAprobados}/${plResults.length} aprobados · Promedio: ${plProm}%`, margin + doc.getTextWidth(plName) + 2, y);
         y += 5;
 
-        const subHead = [["#", "Nombre", "C.C.", "Puntaje", "%", "Estado"]];
+        const subHead = [["#", "Nombre", "C.C.", "Cargo", "Puntaje", "%", "Estado"]];
         const subBody = plResults.map((r, i) => [
           String(i + 1),
           r.nombres,
           r.cedula,
+          r.cargo || "—",
           `${r.puntajeObtenido.toFixed(2)}/${r.puntajeMaximo.toFixed(2)}`,
           `${r.porcentaje.toFixed(2)}%`,
           r.estado,
@@ -423,11 +547,11 @@ export async function POST(req: NextRequest) {
           styles: {
             fontSize: 7,
             cellPadding: 1.5,
-            lineColor: [200, 200, 200],
-            lineWidth: 0.1,
+            lineColor: [128, 128, 128],
+            lineWidth: 0.2,
           },
           headStyles: {
-            fillColor: [100, 116, 139], // slate-500
+            fillColor: [100, 116, 139],
             textColor: [255, 255, 255],
             fontStyle: "bold",
             fontSize: 7,
@@ -437,12 +561,13 @@ export async function POST(req: NextRequest) {
             0: { halign: "center", cellWidth: 8 },
             1: { cellWidth: "auto" },
             2: { halign: "center", cellWidth: 22 },
-            3: { halign: "center", cellWidth: 24 },
-            4: { halign: "center", cellWidth: 16 },
-            5: { halign: "center", cellWidth: 22 },
+            3: { cellWidth: 30 },
+            4: { halign: "center", cellWidth: 24 },
+            5: { halign: "center", cellWidth: 16 },
+            6: { halign: "center", cellWidth: 22 },
           },
           didParseCell: (data) => {
-            if (data.section === "body" && data.column.index === 5) {
+            if (data.section === "body" && data.column.index === 6) {
               const val = data.cell.raw as string;
               if (val === "Aprobada") {
                 data.cell.styles.textColor = [22, 163, 74];
@@ -460,6 +585,54 @@ export async function POST(req: NextRequest) {
         y = (doc as any).lastAutoTable?.finalY || y + 30;
         y += 8;
       }
+    }
+
+    // ── Conferencista signature section ──────────────────
+    const sigSectionH = 35;
+    if (y + sigSectionH > pageHeight - 15) {
+      doc.addPage();
+      y = margin;
+    }
+
+    y += 4;
+    const halfW = (contentWidth - 10) / 2;
+
+    // Left box: Conferencista name
+    doc.setFillColor(239, 239, 239);
+    doc.setDrawColor(128, 128, 128);
+    doc.setLineWidth(0.3);
+    doc.rect(margin, y, 50, 8, "FD");
+    doc.setFontSize(8);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(0, 0, 0);
+    doc.text("CONFERENCISTA:", margin + 2, y + 5.5);
+    doc.setFillColor(255, 255, 255);
+    doc.rect(margin + 50, y, halfW - 50, 8, "FD");
+    doc.setFont("helvetica", "normal");
+    doc.text(conferencista, margin + 52, y + 5.5);
+
+    // Right box: Conferencista firma
+    const firmaBoxX = margin + halfW + 10;
+    doc.setFillColor(239, 239, 239);
+    doc.rect(firmaBoxX, y, 55, 8, "FD");
+    doc.setFont("helvetica", "bold");
+    doc.text("FIRMA DEL CONFERENCISTA:", firmaBoxX + 2, y + 5.5);
+    doc.setFillColor(255, 255, 255);
+    doc.rect(firmaBoxX + 55, y, halfW - 55, 8 + 20, "FD");
+
+    y += 8;
+
+    // Signature image area below
+    doc.setFillColor(250, 251, 254);
+    doc.rect(margin, y, halfW, 20, "FD");
+    // Empty space below name (reserved)
+
+    if (firmaConferencistaUrl) {
+      try {
+        const ext = firmaConferencistaUrl.startsWith("data:image/jpeg") ? "JPEG" : "PNG";
+        const b64 = firmaConferencistaUrl.includes(",") ? firmaConferencistaUrl.split(",")[1] : firmaConferencistaUrl;
+        doc.addImage(b64, ext, firmaBoxX + 57, y, halfW - 60, 18, undefined, "FAST");
+      } catch { /* skip image */ }
     }
 
     // ── Footer on all pages ─────────────────────────────

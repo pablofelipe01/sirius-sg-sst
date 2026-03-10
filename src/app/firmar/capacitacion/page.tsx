@@ -153,6 +153,7 @@ interface PageData {
   yaFirmo: boolean;
   idEmpleadoCore: string | null;
   progIds: string[];
+  cargo?: string;
   evento: EventoInfo;
 }
 
@@ -286,6 +287,7 @@ function FirmarContent() {
           idEmpleadoCore={data.idEmpleadoCore}
           nombres={data.nombre}
           cedula={data.cedula}
+          cargo={data.cargo}
           progCapId={data.progIds?.[0]}
           onFinished={() => setShowEval(false)}
         />
