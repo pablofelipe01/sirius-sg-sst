@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import {
   airtableConfig,
   getAirtableUrl,
@@ -29,29 +29,34 @@ export interface PersonalItem {
 /**
  * GET /api/personal
  * Devuelve la lista de personal activo desde Sirius Nomina Core.
+ * Query params:
+ *   ?excluir=asistencia  → Excluye miembros del comité SST marcados con EXCLUIR_ASISTENCIA
  */
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
     const { personalTableId, personalFields } = airtableConfig;
     const url = getAirtableUrl(personalTableId);
     const headers = getAirtableHeaders();
 
-    // ── Obtener IDs excluidos de asistencia (checkbox en Miembros Comité SST) ──
-    const { miembrosComitesTableId, miembrosComitesFields: mF } = airtableSGSSTConfig;
+    // Solo excluir miembros SST cuando se solicita explícitamente (contexto de asistencia)
+    const excluir = req.nextUrl.searchParams.get("excluir");
     const excludedIds = new Set<string>();
-    try {
-      const exclFormula = encodeURIComponent(`{${mF.EXCLUIR_ASISTENCIA}}=TRUE()`);
-      const exclUrl = `${getSGSSTUrl(miembrosComitesTableId)}?returnFieldsByFieldId=true&filterByFormula=${exclFormula}&fields[]=${mF.ID_EMPLEADO}`;
-      const exclRes = await fetch(exclUrl, { headers: getSGSSTHeaders(), cache: "no-store" });
-      if (exclRes.ok) {
-        const exclData = await exclRes.json();
-        for (const r of (exclData.records || [])) {
-          const empId = r.fields[mF.ID_EMPLEADO] as string;
-          if (empId) excludedIds.add(empId);
+    if (excluir === "asistencia") {
+      const { miembrosComitesTableId, miembrosComitesFields: mF } = airtableSGSSTConfig;
+      try {
+        const exclFormula = encodeURIComponent(`{${mF.EXCLUIR_ASISTENCIA}}=TRUE()`);
+        const exclUrl = `${getSGSSTUrl(miembrosComitesTableId)}?returnFieldsByFieldId=true&filterByFormula=${exclFormula}&fields[]=${mF.ID_EMPLEADO}`;
+        const exclRes = await fetch(exclUrl, { headers: getSGSSTHeaders(), cache: "no-store" });
+        if (exclRes.ok) {
+          const exclData = await exclRes.json();
+          for (const r of (exclData.records || [])) {
+            const empId = r.fields[mF.ID_EMPLEADO] as string;
+            if (empId) excludedIds.add(empId);
+          }
         }
+      } catch (e) {
+        console.warn("[personal] Error fetching exclusion list:", e);
       }
-    } catch (e) {
-      console.warn("[personal] Error fetching exclusion list:", e);
     }
 
     // Excluir: CEO y Contratistas (el Responsable SST se excluye por checkbox después)
@@ -84,11 +89,13 @@ export async function GET() {
       offset = data.offset;
     } while (offset);
 
-    // Filtrar excluidos por checkbox de Miembros Comité SST
-    const filteredRecords = allRecords.filter((record) => {
-      const empId = (record.fields[personalFields.ID_EMPLEADO] as string) || "";
-      return !excludedIds.has(empId);
-    });
+    // Filtrar excluidos solo cuando se solicitó exclusión por asistencia
+    const filteredRecords = excludedIds.size > 0
+      ? allRecords.filter((record) => {
+          const empId = (record.fields[personalFields.ID_EMPLEADO] as string) || "";
+          return !excludedIds.has(empId);
+        })
+      : allRecords;
 
     const personal: PersonalItem[] = filteredRecords.map((record) => {
       const f = record.fields;

@@ -494,7 +494,7 @@ export default function NuevoRegistroPage() {
 
     try {
       // Cargar el personal activo
-      const res = await fetch("/api/personal");
+      const res = await fetch("/api/personal?excluir=asistencia");
       const json = await res.json();
       if (!json.success) throw new Error("Error cargando personal");
 
