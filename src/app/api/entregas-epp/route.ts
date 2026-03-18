@@ -183,7 +183,7 @@ export async function POST(request: NextRequest) {
       // ── 4. Crear Token de Entrega ─────────────────────
       const tokenIdStr = generateTokenId();
       const ahora = new Date();
-      const expiracion = new Date(ahora.getTime() + 12 * 60 * 60 * 1000); // 12h
+      const expiracion = new Date(ahora.getTime() + 48 * 60 * 60 * 1000); // 48h
 
       const tokenFields: Record<string, unknown> = {
         [tokensFields.TOKEN_ID]: tokenIdStr,

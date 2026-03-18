@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import {
@@ -22,6 +22,9 @@ import {
   Fingerprint,
   RefreshCw,
   FileSpreadsheet,
+  PenLine,
+  Eraser,
+  Save,
 } from "lucide-react";
 
 // ══════════════════════════════════════════════════════════
@@ -142,6 +145,221 @@ const defaultEstadoStyle = {
   bg: "bg-white/10",
   border: "border-white/15",
 };
+
+// ══════════════════════════════════════════════════════════
+// Pad de firma inline por entrega
+// ══════════════════════════════════════════════════════════
+function PadFirma({
+  entrega,
+  onSuccess,
+}: {
+  entrega: EntregaEPP;
+  onSuccess: () => void;
+}) {
+  const [abierto, setAbierto] = useState(false);
+  const [guardando, setGuardando] = useState(false);
+  const [firmaError, setFirmaError] = useState<string | null>(null);
+  const [firmaExito, setFirmaExito] = useState(false);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const dibujandoRef = useRef(false);
+  const hasTrazosRef = useRef(false);
+
+  const puedeFirmar =
+    entrega.estado === "Pendiente" || entrega.estado === "Confirmada";
+
+  if (!puedeFirmar) return null;
+
+  const esActualizacion = entrega.estado === "Confirmada";
+
+  // ── Helpers canvas ──────────────────────────────────
+  const getCtx = () => canvasRef.current?.getContext("2d") ?? null;
+
+  const getPos = (e: React.MouseEvent | React.TouchEvent) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return { x: 0, y: 0 };
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    if ("touches" in e) {
+      const t = e.touches[0];
+      return { x: (t.clientX - rect.left) * scaleX, y: (t.clientY - rect.top) * scaleY };
+    }
+    return { x: (e.clientX - rect.left) * scaleX, y: (e.clientY - rect.top) * scaleY };
+  };
+
+  const startDraw = (e: React.MouseEvent | React.TouchEvent) => {
+    e.preventDefault();
+    dibujandoRef.current = true;
+    hasTrazosRef.current = true;
+    const ctx = getCtx();
+    if (!ctx) return;
+    const { x, y } = getPos(e);
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+  };
+
+  const draw = (e: React.MouseEvent | React.TouchEvent) => {
+    if (!dibujandoRef.current) return;
+    e.preventDefault();
+    const ctx = getCtx();
+    if (!ctx) return;
+    const { x, y } = getPos(e);
+    ctx.lineTo(x, y);
+    ctx.stroke();
+  };
+
+  const stopDraw = () => {
+    dibujandoRef.current = false;
+  };
+
+  const limpiarCanvas = () => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    hasTrazosRef.current = false;
+  };
+
+  const initCanvas = (canvas: HTMLCanvasElement | null) => {
+    if (!canvas) return;
+    // eslint-disable-next-line react-compiler/react-compiler
+    canvasRef.current = canvas;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    ctx.strokeStyle = "#1a1a33";
+    ctx.lineWidth = 2.5;
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+  };
+
+  const handleAbrir = () => {
+    setAbierto(true);
+    setFirmaError(null);
+    setFirmaExito(false);
+    hasTrazosRef.current = false;
+  };
+
+  const handleGuardar = async () => {
+    if (!canvasRef.current || !hasTrazosRef.current) {
+      setFirmaError("Debe dibujar su firma antes de guardar");
+      return;
+    }
+    setGuardando(true);
+    setFirmaError(null);
+    try {
+      const signatureData = canvasRef.current.toDataURL("image/png");
+      const res = await fetch("/api/entregas-epp/firmar-directo", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ entregaId: entrega.id, signatureData }),
+      });
+      const json = await res.json();
+      if (json.success) {
+        setFirmaExito(true);
+        setAbierto(false);
+        onSuccess();
+      } else {
+        setFirmaError(json.message || "Error al guardar la firma");
+      }
+    } catch {
+      setFirmaError("Error de conexión");
+    } finally {
+      setGuardando(false);
+    }
+  };
+
+  return (
+    <div className="mt-3 space-y-2">
+      {/* Botón abrir pad */}
+      {!abierto && (
+        <button
+          onClick={handleAbrir}
+          className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+            esActualizacion
+              ? "bg-blue-500/15 border border-blue-400/25 text-blue-300 hover:bg-blue-500/25"
+              : "bg-amber-500/15 border border-amber-400/25 text-amber-300 hover:bg-amber-500/25"
+          }`}
+        >
+          <PenLine className="w-3.5 h-3.5" />
+          {esActualizacion ? "Actualizar firma" : "Cargar firma"}
+        </button>
+      )}
+
+      {/* Pad de firma inline */}
+      {abierto && (
+        <div className="rounded-xl border border-white/15 bg-white/5 p-3 space-y-3">
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-semibold text-white/70">
+              {esActualizacion ? "Actualizar firma" : "Dibujar firma"}
+            </p>
+            <button
+              onClick={() => setAbierto(false)}
+              className="w-6 h-6 rounded-md bg-white/10 flex items-center justify-center text-white/40 hover:bg-white/20 transition-all cursor-pointer"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+
+          {/* Canvas */}
+          <div className="rounded-lg overflow-hidden border border-white/15 bg-white">
+            <canvas
+              ref={initCanvas}
+              width={600}
+              height={180}
+              className="w-full h-auto cursor-crosshair touch-none"
+              onMouseDown={startDraw}
+              onMouseMove={draw}
+              onMouseUp={stopDraw}
+              onMouseLeave={stopDraw}
+              onTouchStart={startDraw}
+              onTouchMove={draw}
+              onTouchEnd={stopDraw}
+            />
+          </div>
+
+          {/* Acciones */}
+          <div className="flex items-center gap-2">
+            <button
+              onClick={limpiarCanvas}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/10 border border-white/15 text-white/60 text-xs font-medium hover:bg-white/15 transition-all cursor-pointer"
+            >
+              <Eraser className="w-3.5 h-3.5" />
+              Limpiar
+            </button>
+            <button
+              onClick={handleGuardar}
+              disabled={guardando}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-green-500/20 border border-green-400/25 text-green-300 text-xs font-semibold hover:bg-green-500/30 transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {guardando ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <Save className="w-3.5 h-3.5" />
+              )}
+              Guardar firma
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Éxito */}
+      {firmaExito && (
+        <p className="text-[10px] text-green-400 flex items-center gap-1">
+          <CheckCircle className="w-3 h-3" />
+          {esActualizacion ? "Firma actualizada exitosamente" : "Firma registrada exitosamente"}
+        </p>
+      )}
+
+      {/* Error */}
+      {firmaError && (
+        <p className="text-[10px] text-red-400 flex items-center gap-1">
+          <XCircle className="w-3 h-3" /> {firmaError}
+        </p>
+      )}
+    </div>
+  );
+}
 
 // ══════════════════════════════════════════════════════════
 // Componente Principal
@@ -723,6 +941,22 @@ export default function EntregasListPage() {
                               </p>
                             </div>
                           )}
+
+                          {/* Pad de firma inline */}
+                          <PadFirma
+                            entrega={ent}
+                            onSuccess={fetchEntregas}
+                          />
+                        </div>
+                      )}
+
+                      {/* Pad de firma si no hay tokens aún */}
+                      {ent.tokens.length === 0 && (
+                        <div className="mt-4 pt-3 border-t border-white/5">
+                          <PadFirma
+                            entrega={ent}
+                            onSuccess={fetchEntregas}
+                          />
                         </div>
                       )}
                     </div>
