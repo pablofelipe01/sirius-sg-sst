@@ -47,7 +47,8 @@ interface DetalleEquipoPayload {
 }
 
 interface ResponsablePayload {
-  tipo: "Responsable" | "COPASST";
+  tipo: "Responsable Área" | "Responsable SST" | "Responsable COPASST";
+  area?: string | null;
   nombre: string;
   cedula: string;
   cargo: string;
@@ -265,7 +266,7 @@ export async function POST(request: NextRequest) {
 
     // 3. Crear responsables (firmas)
     const respUrl = getSGSSTUrl(airtableSGSSTConfig.respEquiposTableId);
-    const respRecords = payload.responsables.map((r) => {
+    const respRecords = payload.responsables.map((r, idx) => {
       let firmaEncriptada = "";
       if (r.firma && AES_SECRET) {
         firmaEncriptada = encryptAES(
@@ -274,15 +275,22 @@ export async function POST(request: NextRequest) {
             nombre: r.nombre,
             cedula: r.cedula,
             tipo: r.tipo,
+            area: r.area || null,
             timestamp: new Date().toISOString(),
             inspeccionId,
           })
         );
       }
 
+      // Generar ID único basado en tipo y área (o índice)
+      const tipoCorto = r.tipo === "Responsable Área" ? "AREA" :
+                        r.tipo === "Responsable SST" ? "SST" : "COPASST";
+      const areaSuffix = r.area ? `-${r.area.replace(/\s+/g, "")}` : "";
+      const idSuffix = r.tipo === "Responsable Área" ? areaSuffix : `-${idx}`;
+
       return {
         fields: {
-          [respEquiposFields.ID_FIRMA]: `${inspeccionId}-${r.tipo}`,
+          [respEquiposFields.ID_FIRMA]: `${inspeccionId}-${tipoCorto}${idSuffix}`,
           [respEquiposFields.INSPECCION_LINK]: [cabeceraRecordId],
           [respEquiposFields.TIPO]: r.tipo,
           [respEquiposFields.NOMBRE]: r.nombre,

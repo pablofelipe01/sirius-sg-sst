@@ -23,6 +23,7 @@ export interface PersonalItem {
   numeroDocumento: string;
   tipoPersonal: string;
   estado: string;
+  areas: string[];
   fotoPerfil: { url: string; filename: string } | null;
 }
 
@@ -31,6 +32,7 @@ export interface PersonalItem {
  * Devuelve la lista de personal activo desde Sirius Nomina Core.
  * Query params:
  *   ?excluir=asistencia  → Excluye miembros del comité SST marcados con EXCLUIR_ASISTENCIA
+ *   ?area=Laboratorio    → Filtra solo empleados asignados a esa área
  */
 export async function GET(req: NextRequest) {
   try {
@@ -97,11 +99,22 @@ export async function GET(req: NextRequest) {
         })
       : allRecords;
 
+    // Obtener parámetro de área para filtrado adicional
+    const areaFilter = req.nextUrl.searchParams.get("area");
+
     const personal: PersonalItem[] = filteredRecords.map((record) => {
       const f = record.fields;
       const fotoArray = f[personalFields.FOTO_PERFIL] as
         | { url: string; filename: string }[]
         | undefined;
+
+      // Obtener áreas (puede ser string o array)
+      const areasRaw = f[personalFields.AREAS];
+      const areas: string[] = Array.isArray(areasRaw) 
+        ? areasRaw as string[]
+        : typeof areasRaw === "string" && areasRaw 
+          ? [areasRaw] 
+          : [];
 
       return {
         id: record.id,
@@ -110,16 +123,24 @@ export async function GET(req: NextRequest) {
         numeroDocumento: (f[personalFields.NUMERO_DOCUMENTO] as string) || "",
         tipoPersonal: (() => { const v = f[personalFields.ROL_LOOKUP]; return (Array.isArray(v) ? v[0] : v) as string || ""; })(),
         estado: (f[personalFields.ESTADO_ACTIVIDAD] as string) || "Activo",
+        areas,
         fotoPerfil: fotoArray?.[0]
           ? { url: fotoArray[0].url, filename: fotoArray[0].filename }
           : null,
       };
     });
 
-    // Ordenar alfabéticamente
-    personal.sort((a, b) => a.nombreCompleto.localeCompare(b.nombreCompleto));
+    // Filtrar por área si se especificó
+    const personalFiltrado = areaFilter
+      ? personal.filter((p) => 
+          p.areas.some((a) => a.toLowerCase().includes(areaFilter.toLowerCase()))
+        )
+      : personal;
 
-    return NextResponse.json({ success: true, data: personal, total: personal.length });
+    // Ordenar alfabéticamente
+    personalFiltrado.sort((a, b) => a.nombreCompleto.localeCompare(b.nombreCompleto));
+
+    return NextResponse.json({ success: true, data: personalFiltrado, total: personalFiltrado.length });
   } catch (error) {
     console.error("Error fetching personal:", error);
     return NextResponse.json(

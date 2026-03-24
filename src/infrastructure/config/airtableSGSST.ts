@@ -109,6 +109,7 @@ export const airtableSGSSTConfig = {
     CATEGORIA: process.env.AIRTABLE_EQUIP_CATEGORIA!,
     TIPO_ESPECIFICO: process.env.AIRTABLE_EQUIP_TIPO_ESPECIFICO!,
     AREA: process.env.AIRTABLE_EQUIP_AREA!,
+    ID_AREA_CORE: process.env.AIRTABLE_EQUIP_ID_AREA_CORE!, // FK simbólica a Sirius Nómina Core
     UBICACION: process.env.AIRTABLE_EQUIP_UBICACION!,
     CAPACIDAD: process.env.AIRTABLE_EQUIP_CAPACIDAD!,
     FECHA_VENCIMIENTO: process.env.AIRTABLE_EQUIP_FECHA_VENCIMIENTO!,
@@ -432,6 +433,7 @@ export const airtableSGSSTConfig = {
     NOMBRE:            process.env.AIRTABLE_BOTIQUINES_NOMBRE!,
     TIPO_LINK:         process.env.AIRTABLE_BOTIQUINES_TIPO_LINK!,
     UBICACION_LINK:    process.env.AIRTABLE_BOTIQUINES_UBICACION_LINK!,
+    ID_AREA_CORE:      process.env.AIRTABLE_BOTIQUINES_ID_AREA_CORE!, // FK simbólica a Sirius Nómina Core
     FECHA_INSTALACION: process.env.AIRTABLE_BOTIQUINES_FECHA_INSTALACION!,
     ESTADO:            process.env.AIRTABLE_BOTIQUINES_ESTADO!,
   },
@@ -503,6 +505,7 @@ export const airtableSGSSTConfig = {
     CAPACIDAD:         process.env.AIRTABLE_EXTINTORES_CAPACIDAD!,
     CLASE_AGENTE:      process.env.AIRTABLE_EXTINTORES_CLASE_AGENTE!,
     UBICACION_LINK:    process.env.AIRTABLE_EXTINTORES_UBICACION_LINK!,
+    ID_AREA_CORE:      process.env.AIRTABLE_EXTINTORES_ID_AREA_CORE!, // FK simbólica a Sirius Nómina Core
     FECHA_RECARGA:     process.env.AIRTABLE_EXTINTORES_FECHA_RECARGA!,
     FECHA_INSTALACION: process.env.AIRTABLE_EXTINTORES_FECHA_INSTALACION!,
     ESTADO:            process.env.AIRTABLE_EXTINTORES_ESTADO!,
@@ -553,6 +556,7 @@ export const airtableSGSSTConfig = {
     CODIGO:            process.env.AIRTABLE_CAMILLAS_CODIGO!,
     NOMBRE:            process.env.AIRTABLE_CAMILLAS_NOMBRE!,
     UBICACION_LINK:    process.env.AIRTABLE_CAMILLAS_UBICACION_LINK!,
+    ID_AREA_CORE:      process.env.AIRTABLE_CAMILLAS_ID_AREA_CORE!, // FK simbólica a Sirius Nómina Core
     FECHA_INSTALACION: process.env.AIRTABLE_CAMILLAS_FECHA_INSTALACION!,
     ESTADO:            process.env.AIRTABLE_CAMILLAS_ESTADO!,
   },
@@ -625,6 +629,7 @@ export const airtableSGSSTConfig = {
     CODIGO:            process.env.AIRTABLE_KITS_CODIGO!,
     NOMBRE:            process.env.AIRTABLE_KITS_NOMBRE!,
     UBICACION_LINK:    process.env.AIRTABLE_KITS_UBICACION_LINK!,
+    ID_AREA_CORE:      process.env.AIRTABLE_KITS_ID_AREA_CORE!, // FK simbólica a Sirius Nómina Core
     FECHA_INSTALACION: process.env.AIRTABLE_KITS_FECHA_INSTALACION!,
     ESTADO:            process.env.AIRTABLE_KITS_ESTADO!,
   },
