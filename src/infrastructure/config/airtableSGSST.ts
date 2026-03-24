@@ -378,6 +378,266 @@ export const airtableSGSSTConfig = {
     ESTADO:            process.env.AIRTABLE_ACCINSPA_ESTADO!,
     FECHA_CIERRE:      process.env.AIRTABLE_ACCINSPA_FECHA_CIERRE!,
     EVIDENCIA_URL:     process.env.AIRTABLE_ACCINSPA_EVIDENCIA_URL!,
+    CRITERIO_LINK:     process.env.AIRTABLE_ACCINSPA_CRITERIO_LINK!,
+  },
+
+  // ══════════════════════════════════════════════════════════
+  // INSPECCIONES ESPECÍFICAS DE EQUIPOS
+  // ══════════════════════════════════════════════════════════
+
+  // ── Tabla "Inspecciones Botiquín" (Cabecera) ──────────────
+  inspBotiquinTableId: process.env.AIRTABLE_INSPBOT_TABLE_ID!,
+  inspBotiquinFields: {
+    ID:                  process.env.AIRTABLE_INSPBOT_ID!,
+    FECHA:               process.env.AIRTABLE_INSPBOT_FECHA!,
+    INSPECTOR:           process.env.AIRTABLE_INSPBOT_INSPECTOR!,
+    CARGO_INSPECTOR:     process.env.AIRTABLE_INSPBOT_CARGO_INSPECTOR!,
+    ESTADO:              process.env.AIRTABLE_INSPBOT_ESTADO!,
+    OBSERVACIONES:       process.env.AIRTABLE_INSPBOT_OBSERVACIONES!,
+    URL_DOCUMENTO:       process.env.AIRTABLE_INSPBOT_URL_DOCUMENTO!,
+    FECHA_EXPORTACION:   process.env.AIRTABLE_INSPBOT_FECHA_EXPORTACION!,
+    DETALLE_LINK:        process.env.AIRTABLE_INSPBOT_DETALLE_LINK!,
+    RESPONSABLES_LINK:   process.env.AIRTABLE_INSPBOT_RESPONSABLES_LINK!,
+  },
+
+  // ── Tabla "Detalle Inspección Botiquín" ───────────────────
+  detalleBotiquinTableId: process.env.AIRTABLE_DETBOT_TABLE_ID!,
+  detalleBotiquinFields: {
+    ID:                process.env.AIRTABLE_DETBOT_ID!,
+    INSPECCION_LINK:   process.env.AIRTABLE_DETBOT_INSPECCION_LINK!,
+    BOTIQUIN_LINK:     process.env.AIRTABLE_DETBOT_BOTIQUIN_LINK!,
+    ELEMENTO_LINK:     process.env.AIRTABLE_DETBOT_ELEMENTO_LINK!,
+    ESTADO_ELEMENTO:   process.env.AIRTABLE_DETBOT_ESTADO_ELEMENTO!,
+    CANTIDAD:          process.env.AIRTABLE_DETBOT_CANTIDAD!,
+    FECHA_VENCIMIENTO: process.env.AIRTABLE_DETBOT_FECHA_VENCIMIENTO!,
+    OBSERVACIONES:     process.env.AIRTABLE_DETBOT_OBSERVACIONES!,
+  },
+
+  // ── Tabla "Responsables Inspección Botiquín" ──────────────
+  respBotiquinTableId: process.env.AIRTABLE_RESPBOT_TABLE_ID!,
+  respBotiquinFields: {
+    ID_FIRMA:          process.env.AIRTABLE_RESPBOT_ID_FIRMA!,
+    INSPECCION_LINK:   process.env.AIRTABLE_RESPBOT_INSPECCION_LINK!,
+    TIPO:              process.env.AIRTABLE_RESPBOT_TIPO!,
+    NOMBRE:            process.env.AIRTABLE_RESPBOT_NOMBRE!,
+    CARGO:             process.env.AIRTABLE_RESPBOT_CARGO!,
+    FIRMADO:           process.env.AIRTABLE_RESPBOT_FIRMADO!,
+    FECHA_FIRMA:       process.env.AIRTABLE_RESPBOT_FECHA_FIRMA!,
+  },
+
+  // ── Tabla "Botiquines" (Catálogo) ─────────────────────────
+  botiquinesTableId: process.env.AIRTABLE_BOTIQUINES_TABLE_ID!,
+  botiquinesFields: {
+    CODIGO:            process.env.AIRTABLE_BOTIQUINES_CODIGO!,
+    NOMBRE:            process.env.AIRTABLE_BOTIQUINES_NOMBRE!,
+    TIPO_LINK:         process.env.AIRTABLE_BOTIQUINES_TIPO_LINK!,
+    UBICACION_LINK:    process.env.AIRTABLE_BOTIQUINES_UBICACION_LINK!,
+    FECHA_INSTALACION: process.env.AIRTABLE_BOTIQUINES_FECHA_INSTALACION!,
+    ESTADO:            process.env.AIRTABLE_BOTIQUINES_ESTADO!,
+  },
+
+  // ── Tabla "Catálogo Elementos Botiquín" ───────────────────
+  elementosBotiquinTableId: process.env.AIRTABLE_ELEMBOT_TABLE_ID!,
+  elementosBotiquinFields: {
+    CODIGO:              process.env.AIRTABLE_ELEMBOT_CODIGO!,
+    NOMBRE:              process.env.AIRTABLE_ELEMBOT_NOMBRE!,
+    UNIDAD:              process.env.AIRTABLE_ELEMBOT_UNIDAD!,
+    REQUIERE_VENCIMIENTO: process.env.AIRTABLE_ELEMBOT_REQUIERE_VENCIMIENTO!,
+    DESCRIPCION:         process.env.AIRTABLE_ELEMBOT_DESCRIPCION!,
+    ESTADO:              process.env.AIRTABLE_ELEMBOT_ESTADO!,
+  },
+
+  // ── Tabla "Inspecciones Extintor" (Cabecera) ──────────────
+  inspExtintorTableId: process.env.AIRTABLE_INSPEXT_TABLE_ID!,
+  inspExtintorFields: {
+    ID:                  process.env.AIRTABLE_INSPEXT_ID!,
+    FECHA:               process.env.AIRTABLE_INSPEXT_FECHA!,
+    INSPECTOR:           process.env.AIRTABLE_INSPEXT_INSPECTOR!,
+    CARGO_INSPECTOR:     process.env.AIRTABLE_INSPEXT_CARGO_INSPECTOR!,
+    ESTADO:              process.env.AIRTABLE_INSPEXT_ESTADO!,
+    OBSERVACIONES:       process.env.AIRTABLE_INSPEXT_OBSERVACIONES!,
+    URL_DOCUMENTO:       process.env.AIRTABLE_INSPEXT_URL_DOCUMENTO!,
+    FECHA_EXPORTACION:   process.env.AIRTABLE_INSPEXT_FECHA_EXPORTACION!,
+    DETALLE_LINK:        process.env.AIRTABLE_INSPEXT_DETALLE_LINK!,
+    RESPONSABLES_LINK:   process.env.AIRTABLE_INSPEXT_RESPONSABLES_LINK!,
+  },
+
+  // ── Tabla "Detalle Inspección Extintor" ───────────────────
+  detalleExtintorTableId: process.env.AIRTABLE_DETEXT_TABLE_ID!,
+  detalleExtintorFields: {
+    ID:                  process.env.AIRTABLE_DETEXT_ID!,
+    INSPECCION_LINK:     process.env.AIRTABLE_DETEXT_INSPECCION_LINK!,
+    EXTINTOR_LINK:       process.env.AIRTABLE_DETEXT_EXTINTOR_LINK!,
+    PRESION:             process.env.AIRTABLE_DETEXT_PRESION!,
+    SELLO_GARANTIA:      process.env.AIRTABLE_DETEXT_SELLO_GARANTIA!,
+    MANOMETRO:           process.env.AIRTABLE_DETEXT_MANOMETRO!,
+    ESTADO_CILINDRO:     process.env.AIRTABLE_DETEXT_ESTADO_CILINDRO!,
+    MANIJA:              process.env.AIRTABLE_DETEXT_MANIJA!,
+    BOQUILLA_MANGUERA:   process.env.AIRTABLE_DETEXT_BOQUILLA_MANGUERA!,
+    ANILLO_SEGURIDAD:    process.env.AIRTABLE_DETEXT_ANILLO_SEGURIDAD!,
+    PIN_SEGURIDAD:       process.env.AIRTABLE_DETEXT_PIN_SEGURIDAD!,
+    PINTURA:             process.env.AIRTABLE_DETEXT_PINTURA!,
+    TARJETA_INSPECCION:  process.env.AIRTABLE_DETEXT_TARJETA_INSPECCION!,
+    OBSERVACIONES:       process.env.AIRTABLE_DETEXT_OBSERVACIONES!,
+  },
+
+  // ── Tabla "Responsables Inspección Extintor" ──────────────
+  respExtintorTableId: process.env.AIRTABLE_RESPEXT_TABLE_ID!,
+  respExtintorFields: {
+    ID_FIRMA:          process.env.AIRTABLE_RESPEXT_ID_FIRMA!,
+    INSPECCION_LINK:   process.env.AIRTABLE_RESPEXT_INSPECCION_LINK!,
+    TIPO:              process.env.AIRTABLE_RESPEXT_TIPO!,
+    NOMBRE:            process.env.AIRTABLE_RESPEXT_NOMBRE!,
+    CARGO:             process.env.AIRTABLE_RESPEXT_CARGO!,
+    FIRMADO:           process.env.AIRTABLE_RESPEXT_FIRMADO!,
+    FECHA_FIRMA:       process.env.AIRTABLE_RESPEXT_FECHA_FIRMA!,
+  },
+
+  // ── Tabla "Extintores" (Catálogo) ─────────────────────────
+  extintoresTableId: process.env.AIRTABLE_EXTINTORES_TABLE_ID!,
+  extintoresFields: {
+    CODIGO:            process.env.AIRTABLE_EXTINTORES_CODIGO!,
+    NUMERO:            process.env.AIRTABLE_EXTINTORES_NUMERO!,
+    NOMBRE:            process.env.AIRTABLE_EXTINTORES_NOMBRE!,
+    TIPO_LINK:         process.env.AIRTABLE_EXTINTORES_TIPO_LINK!,
+    CAPACIDAD:         process.env.AIRTABLE_EXTINTORES_CAPACIDAD!,
+    CLASE_AGENTE:      process.env.AIRTABLE_EXTINTORES_CLASE_AGENTE!,
+    UBICACION_LINK:    process.env.AIRTABLE_EXTINTORES_UBICACION_LINK!,
+    FECHA_RECARGA:     process.env.AIRTABLE_EXTINTORES_FECHA_RECARGA!,
+    FECHA_INSTALACION: process.env.AIRTABLE_EXTINTORES_FECHA_INSTALACION!,
+    ESTADO:            process.env.AIRTABLE_EXTINTORES_ESTADO!,
+  },
+
+  // ── Tabla "Inspecciones Camilla" (Cabecera) ───────────────
+  inspCamillaTableId: process.env.AIRTABLE_INSPCAM_TABLE_ID!,
+  inspCamillaFields: {
+    ID:                  process.env.AIRTABLE_INSPCAM_ID!,
+    FECHA:               process.env.AIRTABLE_INSPCAM_FECHA!,
+    INSPECTOR:           process.env.AIRTABLE_INSPCAM_INSPECTOR!,
+    CARGO_INSPECTOR:     process.env.AIRTABLE_INSPCAM_CARGO_INSPECTOR!,
+    ESTADO:              process.env.AIRTABLE_INSPCAM_ESTADO!,
+    OBSERVACIONES:       process.env.AIRTABLE_INSPCAM_OBSERVACIONES!,
+    URL_DOCUMENTO:       process.env.AIRTABLE_INSPCAM_URL_DOCUMENTO!,
+    FECHA_EXPORTACION:   process.env.AIRTABLE_INSPCAM_FECHA_EXPORTACION!,
+    DETALLE_LINK:        process.env.AIRTABLE_INSPCAM_DETALLE_LINK!,
+    RESPONSABLES_LINK:   process.env.AIRTABLE_INSPCAM_RESPONSABLES_LINK!,
+  },
+
+  // ── Tabla "Detalle Inspección Camilla" ────────────────────
+  detalleCamillaTableId: process.env.AIRTABLE_DETCAM_TABLE_ID!,
+  detalleCamillaFields: {
+    ID:                process.env.AIRTABLE_DETCAM_ID!,
+    INSPECCION_LINK:   process.env.AIRTABLE_DETCAM_INSPECCION_LINK!,
+    CAMILLA_LINK:      process.env.AIRTABLE_DETCAM_CAMILLA_LINK!,
+    ELEMENTO_LINK:     process.env.AIRTABLE_DETCAM_ELEMENTO_LINK!,
+    ESTADO_ELEMENTO:   process.env.AIRTABLE_DETCAM_ESTADO_ELEMENTO!,
+    CANTIDAD:          process.env.AIRTABLE_DETCAM_CANTIDAD!,
+    OBSERVACIONES:     process.env.AIRTABLE_DETCAM_OBSERVACIONES!,
+  },
+
+  // ── Tabla "Responsables Inspección Camilla" ───────────────
+  respCamillaTableId: process.env.AIRTABLE_RESPCAM_TABLE_ID!,
+  respCamillaFields: {
+    ID_FIRMA:          process.env.AIRTABLE_RESPCAM_ID_FIRMA!,
+    INSPECCION_LINK:   process.env.AIRTABLE_RESPCAM_INSPECCION_LINK!,
+    TIPO:              process.env.AIRTABLE_RESPCAM_TIPO!,
+    NOMBRE:            process.env.AIRTABLE_RESPCAM_NOMBRE!,
+    CARGO:             process.env.AIRTABLE_RESPCAM_CARGO!,
+    FIRMADO:           process.env.AIRTABLE_RESPCAM_FIRMADO!,
+    FECHA_FIRMA:       process.env.AIRTABLE_RESPCAM_FECHA_FIRMA!,
+  },
+
+  // ── Tabla "Camillas" (Catálogo) ───────────────────────────
+  camillasTableId: process.env.AIRTABLE_CAMILLAS_TABLE_ID!,
+  camillasFields: {
+    CODIGO:            process.env.AIRTABLE_CAMILLAS_CODIGO!,
+    NOMBRE:            process.env.AIRTABLE_CAMILLAS_NOMBRE!,
+    UBICACION_LINK:    process.env.AIRTABLE_CAMILLAS_UBICACION_LINK!,
+    FECHA_INSTALACION: process.env.AIRTABLE_CAMILLAS_FECHA_INSTALACION!,
+    ESTADO:            process.env.AIRTABLE_CAMILLAS_ESTADO!,
+  },
+
+  // ── Tabla "Catálogo Elementos Camilla" ────────────────────
+  elementosCamillaTableId: process.env.AIRTABLE_ELEMCAM_TABLE_ID!,
+  elementosCamillaFields: {
+    CODIGO:            process.env.AIRTABLE_ELEMCAM_CODIGO!,
+    NOMBRE:            process.env.AIRTABLE_ELEMCAM_NOMBRE!,
+    CANTIDAD_ESTANDAR: process.env.AIRTABLE_ELEMCAM_CANTIDAD_ESTANDAR!,
+    DESCRIPCION:       process.env.AIRTABLE_ELEMCAM_DESCRIPCION!,
+    ESTADO:            process.env.AIRTABLE_ELEMCAM_ESTADO!,
+  },
+
+  // ── Tabla "Inspecciones Kit Derrames" (Cabecera) ──────────
+  inspKitDerramesTableId: process.env.AIRTABLE_INSPKIT_TABLE_ID!,
+  inspKitDerramesFields: {
+    ID:                   process.env.AIRTABLE_INSPKIT_ID!,
+    FECHA:                process.env.AIRTABLE_INSPKIT_FECHA!,
+    INSPECTOR:            process.env.AIRTABLE_INSPKIT_INSPECTOR!,
+    CARGO_INSPECTOR:      process.env.AIRTABLE_INSPKIT_CARGO_INSPECTOR!,
+    ESTADO:               process.env.AIRTABLE_INSPKIT_ESTADO!,
+    OBSERVACIONES:        process.env.AIRTABLE_INSPKIT_OBSERVACIONES!,
+    URL_DOCUMENTO:        process.env.AIRTABLE_INSPKIT_URL_DOCUMENTO!,
+    FECHA_EXPORTACION:    process.env.AIRTABLE_INSPKIT_FECHA_EXPORTACION!,
+    DETALLE_LINK:         process.env.AIRTABLE_INSPKIT_DETALLE_LINK!,
+    VERIFICACIONES_LINK:  process.env.AIRTABLE_INSPKIT_VERIFICACIONES_LINK!,
+    RESPONSABLES_LINK:    process.env.AIRTABLE_INSPKIT_RESPONSABLES_LINK!,
+  },
+
+  // ── Tabla "Detalle Inspección Kit Derrames" ───────────────
+  detalleKitDerramesTableId: process.env.AIRTABLE_DETKIT_TABLE_ID!,
+  detalleKitDerramesFields: {
+    ID:                process.env.AIRTABLE_DETKIT_ID!,
+    INSPECCION_LINK:   process.env.AIRTABLE_DETKIT_INSPECCION_LINK!,
+    KIT_LINK:          process.env.AIRTABLE_DETKIT_KIT_LINK!,
+    ELEMENTO_LINK:     process.env.AIRTABLE_DETKIT_ELEMENTO_LINK!,
+    ESTADO_ELEMENTO:   process.env.AIRTABLE_DETKIT_ESTADO_ELEMENTO!,
+    CANTIDAD:          process.env.AIRTABLE_DETKIT_CANTIDAD!,
+    FECHA_VENCIMIENTO: process.env.AIRTABLE_DETKIT_FECHA_VENCIMIENTO!,
+    OBSERVACIONES:     process.env.AIRTABLE_DETKIT_OBSERVACIONES!,
+  },
+
+  // ── Tabla "Verificaciones Kit Derrames" ───────────────────
+  verificacionesKitTableId: process.env.AIRTABLE_VERKIT_TABLE_ID!,
+  verificacionesKitFields: {
+    ID:                   process.env.AIRTABLE_VERKIT_ID!,
+    INSPECCION_LINK:      process.env.AIRTABLE_VERKIT_INSPECCION_LINK!,
+    KIT_LINK:             process.env.AIRTABLE_VERKIT_KIT_LINK!,
+    CONOCE_PROCEDIMIENTO: process.env.AIRTABLE_VERKIT_CONOCE_PROCEDIMIENTO!,
+    ALMACENAMIENTO:       process.env.AIRTABLE_VERKIT_ALMACENAMIENTO!,
+    ROTULADO:             process.env.AIRTABLE_VERKIT_ROTULADO!,
+  },
+
+  // ── Tabla "Responsables Inspección Kit Derrames" ──────────
+  respKitDerramesTableId: process.env.AIRTABLE_RESPKIT_TABLE_ID!,
+  respKitDerramesFields: {
+    ID_FIRMA:          process.env.AIRTABLE_RESPKIT_ID_FIRMA!,
+    INSPECCION_LINK:   process.env.AIRTABLE_RESPKIT_INSPECCION_LINK!,
+    TIPO:              process.env.AIRTABLE_RESPKIT_TIPO!,
+    NOMBRE:            process.env.AIRTABLE_RESPKIT_NOMBRE!,
+    CARGO:             process.env.AIRTABLE_RESPKIT_CARGO!,
+    FIRMADO:           process.env.AIRTABLE_RESPKIT_FIRMADO!,
+    FECHA_FIRMA:       process.env.AIRTABLE_RESPKIT_FECHA_FIRMA!,
+  },
+
+  // ── Tabla "Kits Control Derrames" (Catálogo) ──────────────
+  kitsDerramesTableId: process.env.AIRTABLE_KITS_TABLE_ID!,
+  kitsDerramesFields: {
+    CODIGO:            process.env.AIRTABLE_KITS_CODIGO!,
+    NOMBRE:            process.env.AIRTABLE_KITS_NOMBRE!,
+    UBICACION_LINK:    process.env.AIRTABLE_KITS_UBICACION_LINK!,
+    FECHA_INSTALACION: process.env.AIRTABLE_KITS_FECHA_INSTALACION!,
+    ESTADO:            process.env.AIRTABLE_KITS_ESTADO!,
+  },
+
+  // ── Tabla "Catálogo Elementos Kit Derrames" ───────────────
+  elementosKitTableId: process.env.AIRTABLE_ELEMKIT_TABLE_ID!,
+  elementosKitFields: {
+    CODIGO:              process.env.AIRTABLE_ELEMKIT_CODIGO!,
+    NOMBRE:              process.env.AIRTABLE_ELEMKIT_NOMBRE!,
+    CANTIDAD_ESTANDAR:   process.env.AIRTABLE_ELEMKIT_CANTIDAD_ESTANDAR!,
+    REQUIERE_VENCIMIENTO: process.env.AIRTABLE_ELEMKIT_REQUIERE_VENCIMIENTO!,
+    DESCRIPCION:         process.env.AIRTABLE_ELEMKIT_DESCRIPCION!,
+    ESTADO:              process.env.AIRTABLE_ELEMKIT_ESTADO!,
   },
 };
 

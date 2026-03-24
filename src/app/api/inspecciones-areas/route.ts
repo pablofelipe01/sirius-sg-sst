@@ -27,6 +27,7 @@ type CondicionCriterio = "Bueno" | "Malo" | "NA" | null;
 type TipoArea = "Laboratorio" | "Pirólisis" | "Bodega" | "Administrativa" | "Guaicaramo";
 
 interface CriterioPayload {
+  id: string; // ID temporal del frontend (ej: "crit-0")
   categoria: string;
   criterio: string;
   condicion: CondicionCriterio;
@@ -38,6 +39,7 @@ interface AccionCorrectivaPayload {
   tipo: "Preventiva" | "Correctiva" | "Mejora";
   responsable: string; // ID_EMPLEADO_CORE
   fechaPropuestaCierre: string;
+  criterioRelacionado: string; // ID del criterio (CriterioEvaluado.id → detalle record)
 }
 
 interface ResponsablePayload {
@@ -172,18 +174,144 @@ export async function GET(request: NextRequest) {
     }
 
     const data: AirtableResponse = await response.json();
+    const cabeceraRecordIds = data.records.map((r) => r.id);
+    
+    // IMPORTANTE: Crear mapas recordId <-> idInspeccion
+    // ARRAYJOIN en campos de link devuelve el campo primario (idInspeccion), no el recordId
+    const recordIdToIdInspeccion: Record<string, string> = {};
+    const idInspeccionToRecordId: Record<string, string> = {};
+    data.records.forEach((r) => {
+      const idInsp = r.fields[inspeccionesAreasFields.ID] as string;
+      recordIdToIdInspeccion[r.id] = idInsp;
+      idInspeccionToRecordId[idInsp] = r.id;
+    });
+    const cabeceraIdInspecciones = data.records.map((r) => r.fields[inspeccionesAreasFields.ID] as string);
 
-    const inspecciones = data.records.map((record) => ({
-      id: record.id,
-      idInspeccion: record.fields[inspeccionesAreasFields.ID] as string,
-      fecha: record.fields[inspeccionesAreasFields.FECHA] as string,
-      inspector: record.fields[inspeccionesAreasFields.INSPECTOR] as string,
-      area: record.fields[inspeccionesAreasFields.AREA] as string,
-      estado: record.fields[inspeccionesAreasFields.ESTADO] as string,
-      observaciones: (record.fields[inspeccionesAreasFields.OBSERVACIONES] as string) || "",
-      cantidadCriterios: (record.fields[inspeccionesAreasFields.DETALLE_LINK] as string[] || []).length,
-      cantidadAcciones: (record.fields[inspeccionesAreasFields.ACCIONES_LINK] as string[] || []).length,
-    }));
+    // ── Obtener detalles (criterios) de todas las inspecciones ──
+    const { detalleInspeccionAreasFields, accionesCorrectivasAreasFields, respInspeccionAreasFields } = airtableSGSSTConfig;
+    
+    // NOTA: Las fórmulas de Airtable requieren NOMBRES de campos, no Field IDs
+    // Y ARRAYJOIN devuelve el campo PRIMARIO del registro enlazado, no el record ID
+    const FIELD_NAME_INSPECCION_DETALLE = "Inspección";
+    const FIELD_NAME_CONDICION = "Condición";
+    const FIELD_NAME_INSPECCION_ACCIONES = "Inspección";
+    const FIELD_NAME_INSPECCION_RESP = "Inspección";
+    
+    // Función helper para contar registros por inspección
+    // Usa idInspeccion en la fórmula (porque ARRAYJOIN devuelve el campo primario)
+    // Pero retorna counts indexados por recordId (para compatibilidad con el resto del código)
+    const countByInspeccion = async (tableId: string, linkFieldName: string, linkFieldId: string) => {
+      const counts: Record<string, number> = {};
+      if (cabeceraIdInspecciones.length === 0) return counts;
+
+      // Consultar todos los detalles que pertenezcan a cualquiera de las inspecciones
+      // Usar idInspeccion en la fórmula (lo que ARRAYJOIN devuelve)
+      const filterFormula2 = `OR(${cabeceraIdInspecciones.map((idInsp) => `FIND('${idInsp}', ARRAYJOIN({${linkFieldName}})) > 0`).join(", ")})`;
+      const detUrl = getSGSSTUrl(tableId);
+      const detParams = new URLSearchParams({
+        filterByFormula: filterFormula2,
+        returnFieldsByFieldId: "true",
+        "fields[]": linkFieldId,
+      });
+
+      const detRes = await fetch(`${detUrl}?${detParams.toString()}`, {
+        headers: getSGSSTHeaders(),
+        cache: "no-store",
+      });
+
+      if (detRes.ok) {
+        const detData: AirtableResponse = await detRes.json();
+        detData.records.forEach((r) => {
+          // Los links en la respuesta SÍ contienen record IDs
+          const links = r.fields[linkFieldId] as string[] || [];
+          links.forEach((inspId) => {
+            counts[inspId] = (counts[inspId] || 0) + 1;
+          });
+        });
+      }
+      return counts;
+    };
+
+    // Función para contar criterios por condición (Bueno/Malo/NA)
+    const countCriteriosByCondicion = async () => {
+      const stats: Record<string, { buenos: number; malos: number; na: number }> = {};
+      if (cabeceraIdInspecciones.length === 0) return stats;
+
+      // Usar idInspeccion en la fórmula (lo que ARRAYJOIN devuelve)
+      const filterFormula2 = `OR(${cabeceraIdInspecciones.map((idInsp) => `FIND('${idInsp}', ARRAYJOIN({${FIELD_NAME_INSPECCION_DETALLE}})) > 0`).join(", ")})`;
+      const detUrl = getSGSSTUrl(airtableSGSSTConfig.detalleInspeccionAreasTableId);
+      const detParams = new URLSearchParams({
+        filterByFormula: filterFormula2,
+        returnFieldsByFieldId: "true",
+      });
+      // Añadir campos necesarios (Field IDs para la respuesta)
+      detParams.append("fields[]", detalleInspeccionAreasFields.INSPECCION_LINK);
+      detParams.append("fields[]", detalleInspeccionAreasFields.CONDICION);
+
+      const detRes = await fetch(`${detUrl}?${detParams.toString()}`, {
+        headers: getSGSSTHeaders(),
+        cache: "no-store",
+      });
+
+      if (detRes.ok) {
+        const detData: AirtableResponse = await detRes.json();
+        detData.records.forEach((r) => {
+          // Los links en la respuesta SÍ contienen record IDs
+          const links = r.fields[detalleInspeccionAreasFields.INSPECCION_LINK] as string[] || [];
+          const condicion = r.fields[detalleInspeccionAreasFields.CONDICION] as string || "";
+          links.forEach((inspId) => {
+            if (!stats[inspId]) {
+              stats[inspId] = { buenos: 0, malos: 0, na: 0 };
+            }
+            if (condicion === "Bueno") stats[inspId].buenos++;
+            else if (condicion === "Malo") stats[inspId].malos++;
+            else if (condicion === "NA") stats[inspId].na++;
+          });
+        });
+      }
+      return stats;
+    };
+
+    // Conteos en paralelo (usando nombres de campos en fórmulas)
+    const [criteriosCounts, criteriosStats, accionesCounts, responsablesCounts] = await Promise.all([
+      countByInspeccion(
+        airtableSGSSTConfig.detalleInspeccionAreasTableId, 
+        FIELD_NAME_INSPECCION_DETALLE, 
+        detalleInspeccionAreasFields.INSPECCION_LINK
+      ),
+      countCriteriosByCondicion(),
+      countByInspeccion(
+        airtableSGSSTConfig.accionesCorrectivasAreasTableId, 
+        FIELD_NAME_INSPECCION_ACCIONES, 
+        accionesCorrectivasAreasFields.INSPECCION_LINK
+      ),
+      countByInspeccion(
+        airtableSGSSTConfig.respInspeccionAreasTableId, 
+        FIELD_NAME_INSPECCION_RESP, 
+        respInspeccionAreasFields.INSPECCION_LINK
+      ),
+    ]);
+
+    const inspecciones = data.records.map((record) => {
+      const stats = criteriosStats[record.id] || { buenos: 0, malos: 0, na: 0 };
+      return {
+        id: record.id,
+        idInspeccion: record.fields[inspeccionesAreasFields.ID] as string,
+        fecha: record.fields[inspeccionesAreasFields.FECHA] as string,
+        inspector: record.fields[inspeccionesAreasFields.INSPECTOR] as string,
+        area: record.fields[inspeccionesAreasFields.AREA] as string,
+        estado: record.fields[inspeccionesAreasFields.ESTADO] as string,
+        observaciones: (record.fields[inspeccionesAreasFields.OBSERVACIONES] as string) || "",
+        urlDocumento: (record.fields[inspeccionesAreasFields.URL_DOCUMENTO] as string) || null,
+        fechaExportacion: (record.fields[inspeccionesAreasFields.FECHA_EXPORTACION] as string) || null,
+        cantidadCriterios: criteriosCounts[record.id] || 0,
+        criteriosBuenos: stats.buenos,
+        criteriosMalos: stats.malos,
+        criteriosNA: stats.na,
+        cantidadAcciones: accionesCounts[record.id] || 0,
+        cantidadResponsables: responsablesCounts[record.id] || 0,
+      };
+    });
 
     return NextResponse.json({
       success: true,
@@ -206,6 +334,17 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const payload: InspeccionAreaPayload = await request.json();
+
+    // DEBUG: Log completo del payload recibido
+    console.log("[Inspección Áreas POST] Payload recibido:", JSON.stringify({
+      fechaInspeccion: payload.fechaInspeccion,
+      inspector: payload.inspector,
+      area: payload.area,
+      criteriosRecibidos: payload.criterios?.length || 0,
+      accionesRecibidas: payload.accionesCorrectivas?.length || 0,
+      responsablesRecibidos: payload.responsables?.length || 0,
+      primerCriterio: payload.criterios?.[0],
+    }, null, 2));
 
     // Validaciones
     if (!payload.fechaInspeccion) {
@@ -285,40 +424,74 @@ export async function POST(request: NextRequest) {
 
     // 2. Crear detalles (criterios evaluados) en lotes de 10
     const detalleUrl = getSGSSTUrl(airtableSGSSTConfig.detalleInspeccionAreasTableId);
-    const detalleRecords = payload.criterios
-      .filter((c) => c.condicion !== null) // Solo guardar los evaluados
-      .map((c) => ({
-        fields: {
-          [detalleInspeccionAreasFields.ID]: `${inspeccionId}-${crypto.randomBytes(4).toString("hex")}`,
-          [detalleInspeccionAreasFields.INSPECCION_LINK]: [cabeceraRecordId],
-          [detalleInspeccionAreasFields.CATEGORIA]: c.categoria,
-          [detalleInspeccionAreasFields.CRITERIO]: c.criterio,
-          [detalleInspeccionAreasFields.CONDICION]: c.condicion!,
-          [detalleInspeccionAreasFields.OBSERVACION]: c.observacion || "",
-        },
-      }));
+    const criteriosEvaluados = payload.criterios.filter((c) => c.condicion !== null);
+    
+    console.log("[Inspección Áreas] Criterios a guardar:", criteriosEvaluados.length);
+    console.log("[Inspección Áreas] Table ID detalles:", airtableSGSSTConfig.detalleInspeccionAreasTableId);
+    console.log("[Inspección Áreas] Field IDs:", {
+      ID: detalleInspeccionAreasFields.ID,
+      INSPECCION_LINK: detalleInspeccionAreasFields.INSPECCION_LINK,
+      CATEGORIA: detalleInspeccionAreasFields.CATEGORIA,
+      CRITERIO: detalleInspeccionAreasFields.CRITERIO,
+      CONDICION: detalleInspeccionAreasFields.CONDICION,
+      OBSERVACION: detalleInspeccionAreasFields.OBSERVACION,
+    });
+    
+    const detalleRecords = criteriosEvaluados.map((c) => ({
+      tempId: c.id, // Guardar el ID temporal para mapear después
+      fields: {
+        [detalleInspeccionAreasFields.ID]: `${inspeccionId}-${crypto.randomBytes(4).toString("hex")}`,
+        [detalleInspeccionAreasFields.INSPECCION_LINK]: [cabeceraRecordId],
+        [detalleInspeccionAreasFields.CATEGORIA]: c.categoria,
+        [detalleInspeccionAreasFields.CRITERIO]: c.criterio,
+        [detalleInspeccionAreasFields.CONDICION]: c.condicion!,
+        [detalleInspeccionAreasFields.OBSERVACION]: c.observacion || "",
+      },
+    }));
 
-    const createdDetalleIds: string[] = [];
+    // Mapa: tempId del criterio → record ID de Airtable
+    const criterioIdMap: Record<string, string> = {};
     for (let i = 0; i < detalleRecords.length; i += 10) {
       const batch = detalleRecords.slice(i, i + 10);
+      const requestBody = { records: batch.map(r => ({ fields: r.fields })) };
+      
+      console.log(`[Inspección Áreas] Enviando lote ${Math.floor(i/10) + 1} con ${batch.length} registros`);
+      console.log("[Inspección Áreas] URL:", detalleUrl);
+      console.log("[Inspección Áreas] Primer registro del lote:", JSON.stringify(requestBody.records[0], null, 2));
+      
       const resp = await fetch(detalleUrl, {
         method: "POST",
         headers: getSGSSTHeaders(),
-        body: JSON.stringify({ records: batch }),
+        body: JSON.stringify(requestBody),
       });
+      
+      const responseText = await resp.text();
+      console.log("[Inspección Áreas] Respuesta status:", resp.status);
+      console.log("[Inspección Áreas] Respuesta body:", responseText);
+      
       if (resp.ok) {
-        const data: AirtableResponse = await resp.json();
-        createdDetalleIds.push(...data.records.map((r) => r.id));
+        const data: AirtableResponse = JSON.parse(responseText);
+        // Mapear cada record creado con su tempId
+        data.records.forEach((record, idx) => {
+          const originalIndex = i + idx;
+          const tempId = detalleRecords[originalIndex].tempId;
+          criterioIdMap[tempId] = record.id;
+        });
+        console.log(`[Inspección Áreas] Detalles creados (lote ${Math.floor(i/10) + 1}):`, batch.length);
       } else {
-        console.error("Error creando detalles:", await resp.text());
+        console.error("[Inspección Áreas] Error creando detalles - Status:", resp.status);
       }
     }
+    console.log("[Inspección Áreas] Mapa criterios:", Object.keys(criterioIdMap).length, "IDs mapeados");
+
+    // Array de IDs creados (para logs)
+    const createdDetalleIds = Object.values(criterioIdMap);
 
     // 3. Crear acciones correctivas/preventivas
     if (payload.accionesCorrectivas && payload.accionesCorrectivas.length > 0) {
       const accionesUrl = getSGSSTUrl(airtableSGSSTConfig.accionesCorrectivasAreasTableId);
-      const accionesRecords = payload.accionesCorrectivas.map((a) => ({
-        fields: {
+      const accionesRecords = payload.accionesCorrectivas.map((a) => {
+        const fieldsData: Record<string, unknown> = {
           [accionesCorrectivasAreasFields.ID]: `${inspeccionId}-ACC-${crypto.randomBytes(3).toString("hex")}`,
           [accionesCorrectivasAreasFields.INSPECCION_LINK]: [cabeceraRecordId],
           [accionesCorrectivasAreasFields.DESCRIPCION]: a.descripcion,
@@ -326,23 +499,40 @@ export async function POST(request: NextRequest) {
           [accionesCorrectivasAreasFields.RESPONSABLE]: a.responsable,
           [accionesCorrectivasAreasFields.FECHA_PROPUESTA]: a.fechaPropuestaCierre,
           [accionesCorrectivasAreasFields.ESTADO]: "Pendiente",
-        },
-      }));
+        };
+
+        // Si hay criterio relacionado, agregar el link
+        if (a.criterioRelacionado) {
+          const criterioRecordId = criterioIdMap[a.criterioRelacionado];
+          if (criterioRecordId) {
+            fieldsData[accionesCorrectivasAreasFields.CRITERIO_LINK] = [criterioRecordId];
+            console.log(`[Inspección Áreas] Vinculando acción con criterio: ${a.criterioRelacionado} → ${criterioRecordId}`);
+          } else {
+            console.warn(`[Inspección Áreas] Criterio ${a.criterioRelacionado} no encontrado en mapa. IDs disponibles:`, Object.keys(criterioIdMap));
+          }
+        }
+
+        return { fields: fieldsData };
+      });
 
       for (let i = 0; i < accionesRecords.length; i += 10) {
         const batch = accionesRecords.slice(i, i + 10);
+        console.log("[Inspección Áreas] Creando acciones correctivas, lote", Math.floor(i/10) + 1, "con", batch.length, "registros");
         const resp = await fetch(accionesUrl, {
           method: "POST",
           headers: getSGSSTHeaders(),
           body: JSON.stringify({ records: batch }),
         });
         if (!resp.ok) {
-          console.error("Error creando acciones correctivas:", await resp.text());
+          console.error("[Inspección Áreas] Error creando acciones correctivas:", await resp.text());
+        } else {
+          console.log("[Inspección Áreas] Acciones creadas exitosamente");
         }
       }
     }
 
     // 4. Crear responsables (firmas)
+    console.log("[Inspección Áreas] Responsables a guardar:", payload.responsables.length);
     const respUrl = getSGSSTUrl(airtableSGSSTConfig.respInspeccionAreasTableId);
     const respRecords = payload.responsables.map((r) => {
       let firmaEncriptada = "";
@@ -374,14 +564,20 @@ export async function POST(request: NextRequest) {
     });
 
     if (respRecords.length > 0) {
+      console.log("[Inspección Áreas] Enviando responsables a:", respUrl);
+      console.log("[Inspección Áreas] Primer responsable:", JSON.stringify(respRecords[0], null, 2));
       const respResponse = await fetch(respUrl, {
         method: "POST",
         headers: getSGSSTHeaders(),
         body: JSON.stringify({ records: respRecords }),
       });
       if (!respResponse.ok) {
-        console.error("Error creando responsables:", await respResponse.text());
+        console.error("[Inspección Áreas] Error creando responsables:", await respResponse.text());
+      } else {
+        console.log("[Inspección Áreas] Responsables creados exitosamente:", respRecords.length);
       }
+    } else {
+      console.log("[Inspección Áreas] No hay responsables para guardar");
     }
 
     console.log("Inspección de área guardada:", {

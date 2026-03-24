@@ -43,6 +43,7 @@ interface AccionCorrectiva {
   tipo: "Preventiva" | "Correctiva" | "Mejora";
   responsable: string;
   fechaPropuestaCierre: string;
+  criterioRelacionado: string; // ID del criterio (CriterioEvaluado.id)
 }
 
 interface FirmaResponsable {
@@ -555,6 +556,27 @@ export default function InspeccionAreasPage() {
     fetchTodosEmpleados();
   }, []);
 
+  // Sincronizar "Responsable Inspección" con firma "Responsable"
+  useEffect(() => {
+    if (inspector && responsablesSST.length > 0) {
+      const inspectorData = responsablesSST.find((r) => r.nombre === inspector);
+      if (inspectorData) {
+        setFirmas((prev) =>
+          prev.map((f, i) =>
+            i === 0 && f.tipo === "Responsable"
+              ? {
+                  ...f,
+                  nombre: inspectorData.nombre,
+                  cedula: inspectorData.cedula,
+                  cargo: inspectorData.cargo,
+                }
+              : f
+          )
+        );
+      }
+    }
+  }, [inspector, responsablesSST]);
+
   // Cargar criterios al seleccionar área
   useEffect(() => {
     if (areaSeleccionada) {
@@ -607,6 +629,7 @@ export default function InspeccionAreasPage() {
         tipo: "Correctiva",
         responsable: "",
         fechaPropuestaCierre: "",
+        criterioRelacionado: "",
       },
     ]);
   };
@@ -646,6 +669,109 @@ export default function InspeccionAreasPage() {
     setFirmandoIndex(null);
   };
 
+  // Llenar con datos de prueba
+  const llenarDatosPrueba = (area: TipoArea) => {
+    setAreaSeleccionada(area);
+
+    // Esperar a que los criterios se carguen
+    setTimeout(() => {
+      const criteriosParaArea = getCriteriosForArea(area);
+
+      // Evaluar criterios de forma realista
+      const criteriosEvaluados = criteriosParaArea.map((c, idx) => {
+        let condicion: CondicionCriterio = null;
+        let observacion = "";
+
+        // Distribuir: 60% Bueno, 25% Malo, 15% NA
+        const rand = Math.random();
+        if (rand < 0.6) {
+          condicion = "Bueno";
+        } else if (rand < 0.85) {
+          condicion = "Malo";
+          // Observaciones realistas según el criterio
+          if (c.criterio.toLowerCase().includes("extintor")) {
+            observacion = "Extintor vencido desde hace 3 meses, requiere recarga inmediata";
+          } else if (c.criterio.toLowerCase().includes("señalización")) {
+            observacion = "Señalización deteriorada y poco visible, requiere reemplazo";
+          } else if (c.criterio.toLowerCase().includes("iluminación")) {
+            observacion = "Luminarias fundidas en esquina suroeste del área";
+          } else if (c.criterio.toLowerCase().includes("orden") || c.criterio.toLowerCase().includes("aseo")) {
+            observacion = "Acumulación de material en pasillos, obstaculiza evacuación";
+          } else if (c.criterio.toLowerCase().includes("eléctric")) {
+            observacion = "Cables expuestos sin canalización, riesgo de cortocircuito";
+          } else if (c.criterio.toLowerCase().includes("ventilación")) {
+            observacion = "Sistema de ventilación con filtros saturados";
+          } else if (c.criterio.toLowerCase().includes("químic")) {
+            observacion = "Sustancias sin rotular según SGA, falta hojas de seguridad";
+          } else if (c.criterio.toLowerCase().includes("botiquín")) {
+            observacion = "Botiquín con medicamentos vencidos";
+          } else if (c.criterio.toLowerCase().includes("ruta")) {
+            observacion = "Ruta de evacuación obstruida con equipos";
+          } else {
+            observacion = "Requiere corrección inmediata según normativa vigente";
+          }
+        } else {
+          condicion = "NA";
+        }
+
+        return {
+          id: `crit-${idx}`,
+          categoria: c.categoria,
+          criterio: c.criterio,
+          condicion,
+          observacion,
+        };
+      });
+
+      setCriterios(criteriosEvaluados);
+
+      // Crear acciones correctivas para criterios malos
+      const criteriosMalos = criteriosEvaluados.filter((c) => c.condicion === "Malo");
+      const accionesPrueba: AccionCorrectiva[] = criteriosMalos.slice(0, 3).map((c, idx) => {
+        let descripcion = "";
+        let tipo: "Preventiva" | "Correctiva" | "Mejora" = "Correctiva";
+
+        if (c.criterio.toLowerCase().includes("extintor")) {
+          descripcion = "Realizar recarga y mantenimiento de extintor según NTC 2885. Programar inspección mensual.";
+        } else if (c.criterio.toLowerCase().includes("señalización")) {
+          descripcion = "Reemplazar señalización deteriorada por material fotoluminiscente. Verificar cumplimiento NTC 1461.";
+        } else if (c.criterio.toLowerCase().includes("iluminación")) {
+          descripcion = "Reemplazar luminarias fundidas. Verificar nivel de iluminación según Resolución 2400.";
+        } else if (c.criterio.toLowerCase().includes("orden") || c.criterio.toLowerCase().includes("aseo")) {
+          descripcion = "Implementar programa 5S. Despejar pasillos y rutas de evacuación inmediatamente.";
+          tipo = "Preventiva";
+        } else if (c.criterio.toLowerCase().includes("eléctric")) {
+          descripcion = "Canalizar cables expuestos. Realizar inspección eléctrica completa del área.";
+        } else if (c.criterio.toLowerCase().includes("químic")) {
+          descripcion = "Etiquetar sustancias químicas según SGA. Actualizar matriz de compatibilidad química.";
+        } else {
+          descripcion = `Corregir hallazgo: ${c.criterio}. Verificar cumplimiento normativo.`;
+        }
+
+        const fechaPropuesta = new Date();
+        fechaPropuesta.setDate(fechaPropuesta.getDate() + 15); // 15 días
+
+        return {
+          id: `acc-${Date.now()}-${idx}`,
+          descripcion,
+          tipo,
+          responsable: "",
+          fechaPropuestaCierre: fechaPropuesta.toISOString().split("T")[0],
+          criterioRelacionado: c.id,
+        };
+      });
+
+      setAcciones(accionesPrueba);
+
+      // Observaciones generales
+      const observacionesGenerales = `Inspección de prueba realizada en ${area}.
+Se identificaron ${criteriosMalos.length} hallazgos que requieren atención.
+Priorizar acciones correctivas relacionadas con seguridad de personas.`;
+
+      setObservacionesGenerales(observacionesGenerales);
+    }, 100);
+  };
+
   // Estadísticas
   const criteriosEvaluados = criterios.filter((c) => c.condicion !== null).length;
   const firmasCompletas = firmas.filter((f) => f.firma !== null).length;
@@ -679,6 +805,7 @@ export default function InspeccionAreasPage() {
         criterios: criterios
           .filter((c) => c.condicion !== null)
           .map((c) => ({
+            id: c.id,
             categoria: c.categoria,
             criterio: c.criterio,
             condicion: c.condicion!,
@@ -691,6 +818,7 @@ export default function InspeccionAreasPage() {
             tipo: a.tipo,
             responsable: a.responsable,
             fechaPropuestaCierre: a.fechaPropuestaCierre,
+            criterioRelacionado: a.criterioRelacionado,
           })),
         responsables: firmas
           .filter((f) => f.firma !== null && f.nombre.trim() !== "")
@@ -702,6 +830,16 @@ export default function InspeccionAreasPage() {
             firma: f.firma!,
           })),
       };
+
+      // DEBUG: Log del payload
+      console.log("[Frontend] Payload a enviar:", {
+        criterios: payload.criterios.length,
+        acciones: payload.accionesCorrectivas.length,
+        responsables: payload.responsables.length,
+        primerCriterio: payload.criterios[0],
+        primerAccion: payload.accionesCorrectivas[0],
+        primerResp: payload.responsables[0] ? { ...payload.responsables[0], firma: "..." } : null,
+      });
 
       const res = await fetch("/api/inspecciones-areas", {
         method: "POST",
@@ -853,6 +991,32 @@ export default function InspeccionAreasPage() {
                   <option key={a} value={a} className="bg-slate-800">{a}</option>
                 ))}
               </select>
+              <div className="flex gap-2 mt-2">
+                <button
+                  onClick={() => llenarDatosPrueba("Laboratorio")}
+                  className="flex-1 px-2 py-1.5 text-xs rounded bg-purple-500/20 border border-purple-400/30 text-purple-300 hover:bg-purple-500/30 transition-all"
+                >
+                  🧪 Prueba Lab
+                </button>
+                <button
+                  onClick={() => llenarDatosPrueba("Pirólisis")}
+                  className="flex-1 px-2 py-1.5 text-xs rounded bg-orange-500/20 border border-orange-400/30 text-orange-300 hover:bg-orange-500/30 transition-all"
+                >
+                  🔥 Prueba Pir
+                </button>
+                <button
+                  onClick={() => llenarDatosPrueba("Bodega")}
+                  className="flex-1 px-2 py-1.5 text-xs rounded bg-cyan-500/20 border border-cyan-400/30 text-cyan-300 hover:bg-cyan-500/30 transition-all"
+                >
+                  📦 Prueba Bod
+                </button>
+                <button
+                  onClick={() => llenarDatosPrueba("Administrativa")}
+                  className="flex-1 px-2 py-1.5 text-xs rounded bg-blue-500/20 border border-blue-400/30 text-blue-300 hover:bg-blue-500/30 transition-all"
+                >
+                  💼 Prueba Adm
+                </button>
+              </div>
             </div>
             <div className="flex items-end">
               <div className="w-full px-4 py-2.5 rounded-lg bg-blue-500/20 border border-blue-500/30">
@@ -948,6 +1112,18 @@ export default function InspeccionAreasPage() {
                       rows={2}
                       className="w-full px-3 py-2 text-sm rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/40 focus:outline-none focus:ring-1 focus:ring-orange-400/50 resize-none"
                     />
+                    <select
+                      value={accion.criterioRelacionado}
+                      onChange={(e) => actualizarAccion(accion.id, "criterioRelacionado", e.target.value)}
+                      className="w-full px-3 py-2 text-sm rounded-lg bg-white/10 border border-white/20 text-white focus:outline-none focus:ring-1 focus:ring-orange-400/50 appearance-none cursor-pointer"
+                    >
+                      <option value="" className="bg-slate-800">Seleccionar criterio relacionado...</option>
+                      {criterios.filter((c) => c.condicion !== null).map((c) => (
+                        <option key={c.id} value={c.id} className="bg-slate-800">
+                          {c.categoria} → {c.criterio} ({c.condicion})
+                        </option>
+                      ))}
+                    </select>
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                       <select
                         value={accion.tipo}

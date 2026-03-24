@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import {
@@ -19,14 +19,8 @@ import {
   FileSpreadsheet,
   Fingerprint,
   FileDown,
-  PenTool,
-  Eraser,
+  FileText,
   X,
-  Check,
-  IdCard,
-  ShieldCheck,
-  ClipboardList,
-  AlertCircle,
 } from "lucide-react";
 
 // ══════════════════════════════════════════════════════════
@@ -40,8 +34,14 @@ interface InspeccionResumen {
   area: string;
   estado: string;
   observaciones: string;
+  urlDocumento: string | null;
+  fechaExportacion: string | null;
   cantidadCriterios: number;
+  criteriosBuenos: number;
+  criteriosMalos: number;
+  criteriosNA: number;
   cantidadAcciones: number;
+  cantidadResponsables: number;
 }
 
 interface CriterioDetalle {
@@ -52,6 +52,13 @@ interface CriterioDetalle {
   observacion: string;
 }
 
+interface CriterioRelacionado {
+  id: string;
+  categoria: string;
+  criterio: string;
+  condicion: string;
+}
+
 interface AccionCorrectivaDetalle {
   id: string;
   descripcion: string;
@@ -59,6 +66,7 @@ interface AccionCorrectivaDetalle {
   responsable: string;
   fechaPropuesta: string;
   estado: string;
+  criterioRelacionado: CriterioRelacionado | null;
 }
 
 interface ResponsableDetalle {
@@ -83,18 +91,6 @@ interface InspeccionDetalle {
   acciones: AccionCorrectivaDetalle[];
   responsables: ResponsableDetalle[];
 }
-
-interface PersonaValidada {
-  id: string;
-  idEmpleado: string;
-  nombreCompleto: string;
-  numeroDocumento: string;
-  tipoPersonal: string;
-  rol: string;
-  fotoPerfil: { url: string; filename: string } | null;
-}
-
-type ExportStep = "idle" | "validating-responsable" | "signing-responsable" | "validating-copasst" | "signing-copasst" | "generating";
 
 // Áreas configuradas (sin Guaicaramo)
 const AREAS = ["Todas", "Laboratorio", "Pirólisis", "Bodega", "Administrativa"];
@@ -184,23 +180,8 @@ export default function HistorialInspeccionesAreasPage() {
 
   // Exportar Excel general
   const [exporting, setExporting] = useState(false);
-
-  // Modal exportar individual con firmas
-  const [showExportModal, setShowExportModal] = useState(false);
-  const [exportInspeccionId, setExportInspeccionId] = useState<string | null>(null);
-  const [exportInspeccionInfo, setExportInspeccionInfo] = useState<{ id: string; idInspeccion: string; fecha: string; area: string } | null>(null);
-  const [exportStep, setExportStep] = useState<ExportStep>("idle");
-  const [exportError, setExportError] = useState<string | null>(null);
-
-  // Validación cédula responsable
-  const [cedulaResponsable, setCedulaResponsable] = useState("");
-  const [responsableValidado, setResponsableValidado] = useState<PersonaValidada | null>(null);
-  const [firmaResponsable, setFirmaResponsable] = useState<string | null>(null);
-
-  // Validación cédula COPASST
-  const [cedulaCopasst, setCedulaCopasst] = useState("");
-  const [copasstValidado, setCopasstValidado] = useState<PersonaValidada | null>(null);
-  const [firmaCopasst, setFirmaCopasst] = useState<string | null>(null);
+  // Exportar PDF general
+  const [exportingPdf, setExportingPdf] = useState(false);
 
   // ── Fetch inspecciones ────────────────────────────────
   const fetchInspecciones = useCallback(async () => {
@@ -297,160 +278,141 @@ export default function HistorialInspeccionesAreasPage() {
         body: JSON.stringify({ area: filterArea, estado: filterEstado }),
       });
 
-      const json = await res.json();
-      if (json.success) {
-        alert(`Exportación: ${json.data?.total || 0} registros. Funcionalidad completa próximamente.`);
-      } else {
-        alert("Error al exportar");
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.message || "Error al exportar");
       }
+
+      // El servidor devuelve el archivo Excel directamente
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      
+      // Obtener nombre del archivo del header Content-Disposition
+      const disposition = res.headers.get("Content-Disposition");
+      const match = disposition?.match(/filename="(.+?)"/);
+      a.download = match?.[1] || `Inspecciones_Areas_${new Date().toISOString().split("T")[0]}.xlsx`;
+      
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
     } catch (err) {
       console.error(err);
-      alert("Error al exportar");
+      alert(err instanceof Error ? err.message : "Error al exportar");
     } finally {
       setExporting(false);
     }
   }
 
-  // ── Abrir modal exportar individual ───────────────────
-  function openExportModal(insp: InspeccionResumen) {
-    setExportInspeccionId(insp.id);
-    setExportInspeccionInfo({ id: insp.id, idInspeccion: insp.idInspeccion, fecha: insp.fecha, area: insp.area });
-    setShowExportModal(true);
-    setExportStep("idle");
-    setExportError(null);
-    setCedulaResponsable("");
-    setResponsableValidado(null);
-    setFirmaResponsable(null);
-    setCedulaCopasst("");
-    setCopasstValidado(null);
-    setFirmaCopasst(null);
-  }
-
-  function closeExportModal() {
-    setShowExportModal(false);
-    setExportInspeccionId(null);
-    setExportInspeccionInfo(null);
-    setExportStep("idle");
-    setExportError(null);
-  }
-
-  // ── Validar cédula responsable ────────────────────────
-  async function validarResponsable() {
-    if (!cedulaResponsable.trim()) {
-      setExportError("Ingrese el número de cédula");
-      return;
-    }
-    setExportStep("validating-responsable");
-    setExportError(null);
-
+  // ── Exportar PDF general ─────────────────────────────
+  async function handleExportPdf() {
+    setExportingPdf(true);
     try {
-      const res = await fetch("/api/personal/validar", {
+      const res = await fetch("/api/inspecciones-areas/exportar-pdf", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ documento: cedulaResponsable }),
-      });
-      const json = await res.json();
-      if (json.success) {
-        setResponsableValidado(json.data);
-        setExportStep("signing-responsable");
-      } else {
-        setExportError(json.message || "No se encontró el empleado");
-        setExportStep("idle");
-      }
-    } catch {
-      setExportError("Error de conexión");
-      setExportStep("idle");
-    }
-  }
-
-  // ── Validar cédula COPASST ────────────────────────────
-  async function validarCopasst() {
-    if (!cedulaCopasst.trim()) {
-      setExportError("Ingrese el número de cédula");
-      return;
-    }
-    setExportStep("validating-copasst");
-    setExportError(null);
-
-    try {
-      const res = await fetch("/api/personal/validar", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ documento: cedulaCopasst }),
-      });
-      const json = await res.json();
-      if (json.success) {
-        setCopasstValidado(json.data);
-        setExportStep("signing-copasst");
-      } else {
-        setExportError(json.message || "No se encontró el empleado");
-        setExportStep("idle");
-      }
-    } catch {
-      setExportError("Error de conexión");
-      setExportStep("idle");
-    }
-  }
-
-  // ── Confirmar firma responsable ───────────────────────
-  function confirmarFirmaResponsable(dataUrl: string) {
-    setFirmaResponsable(dataUrl);
-    setExportStep("idle");
-  }
-
-  // ── Confirmar firma COPASST y generar ─────────────────
-  async function confirmarFirmaCopasst(dataUrl: string) {
-    setFirmaCopasst(dataUrl);
-    setExportStep("generating");
-
-    try {
-      const fechaHora = new Date().toLocaleString("es-CO", { timeZone: COLOMBIA_TZ });
-
-      const payload = {
-        inspeccionId: exportInspeccionId,
-        firmaResponsable: {
-          documento: responsableValidado!.numeroDocumento,
-          nombre: responsableValidado!.nombreCompleto,
-          cargo: responsableValidado!.rol || "Responsable de Inspección",
-          firma: firmaResponsable,
-          fechaHora,
-        },
-        firmaCopasst: {
-          documento: copasstValidado!.numeroDocumento,
-          nombre: copasstValidado!.nombreCompleto,
-          cargo: copasstValidado!.rol || "Representante COPASST",
-          firma: dataUrl,
-          fechaHora,
-        },
-      };
-
-      const res = await fetch(`/api/inspecciones-areas/exportar/${exportInspeccionInfo?.idInspeccion}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({ area: filterArea, estado: filterEstado }),
       });
 
       if (!res.ok) {
-        const json = await res.json();
-        throw new Error(json.message || "Error al generar");
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.message || "Error al exportar PDF");
       }
 
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
+      
       const disposition = res.headers.get("Content-Disposition");
-      const match = disposition?.match(/filename="(.+?)"/);
-      a.download = match?.[1] || `Inspeccion_Area_${exportInspeccionInfo?.idInspeccion || "sin-id"}.xlsx`;
+      const match = disposition?.match(/filename="(.+?)"/);      
+      a.download = match?.[1] || `Inspecciones_Areas_${new Date().toISOString().split("T")[0]}.pdf`;
+      
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
-
-      closeExportModal();
     } catch (err) {
-      setExportError(err instanceof Error ? err.message : "Error al generar");
-      setExportStep("idle");
+      console.error(err);
+      alert(err instanceof Error ? err.message : "Error al exportar PDF");
+    } finally {
+      setExportingPdf(false);
+    }
+  }
+
+  // ── Exportar inspección individual ────────────────────
+  const [exportingId, setExportingId] = useState<string | null>(null);
+  const [exportingPdfId, setExportingPdfId] = useState<string | null>(null);
+
+  async function handleExportIndividual(insp: InspeccionResumen) {
+    setExportingId(insp.id);
+    try {
+      // Exportar solo esta inspección usando el filtro del área
+      const res = await fetch("/api/inspecciones-areas/exportar", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ 
+          idInspeccion: insp.idInspeccion,
+          area: insp.area 
+        }),
+      });
+
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.message || "Error al exportar");
+      }
+
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `Inspeccion_${insp.idInspeccion}.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error(err);
+      alert(err instanceof Error ? err.message : "Error al exportar");
+    } finally {
+      setExportingId(null);
+    }
+  }
+
+  // ── Exportar PDF individual ───────────────────────────
+  async function handleExportPdfIndividual(insp: InspeccionResumen) {
+    setExportingPdfId(insp.id);
+    try {
+      const res = await fetch("/api/inspecciones-areas/exportar-pdf", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ 
+          idInspeccion: insp.idInspeccion,
+          area: insp.area 
+        }),
+      });
+
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.message || "Error al exportar PDF");
+      }
+
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `Inspeccion_${insp.idInspeccion}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error(err);
+      alert(err instanceof Error ? err.message : "Error al exportar PDF");
+    } finally {
+      setExportingPdfId(null);
     }
   }
 
@@ -460,7 +422,8 @@ export default function HistorialInspeccionesAreasPage() {
       !searchQuery ||
       insp.idInspeccion?.toLowerCase().includes(searchQuery.toLowerCase()) ||
       insp.inspector?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      insp.area?.toLowerCase().includes(searchQuery.toLowerCase());
+      insp.area?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      insp.observaciones?.toLowerCase().includes(searchQuery.toLowerCase());
 
     return matchSearch;
   });
@@ -469,6 +432,8 @@ export default function HistorialInspeccionesAreasPage() {
   const totalCompletadas = inspecciones.filter((i) => i.estado === "Completado").length;
   const totalConAcciones = inspecciones.filter((i) => i.cantidadAcciones > 0).length;
   const totalCriterios = inspecciones.reduce((sum, i) => sum + (i.cantidadCriterios || 0), 0);
+  const totalFirmas = inspecciones.reduce((sum, i) => sum + (i.cantidadResponsables || 0), 0);
+  const totalAcciones = inspecciones.reduce((sum, i) => sum + (i.cantidadAcciones || 0), 0);
   const estesMes = inspecciones.filter((i) => {
     if (!i.fecha) return false;
     const fechaStr = i.fecha.includes("T") ? i.fecha : i.fecha + "T12:00:00";
@@ -534,6 +499,18 @@ export default function HistorialInspeccionesAreasPage() {
                 <span className="hidden sm:inline">{exporting ? "Exportando..." : "Excel"}</span>
               </button>
               <button
+                onClick={handleExportPdf}
+                disabled={exportingPdf || loading || inspecciones.length === 0}
+                className="flex items-center gap-2 px-3 py-2 rounded-lg bg-red-500/15 border border-red-400/25 text-red-300 text-sm font-semibold hover:bg-red-500/25 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                {exportingPdf ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <FileText className="w-4 h-4" />
+                )}
+                <span className="hidden sm:inline">{exportingPdf ? "Exportando..." : "PDF"}</span>
+              </button>
+              <button
                 onClick={fetchInspecciones}
                 disabled={loading}
                 className="flex items-center gap-2 px-3 py-2 rounded-lg bg-white/10 border border-white/15 text-white/60 text-sm hover:bg-white/20 transition-all cursor-pointer disabled:opacity-40"
@@ -547,22 +524,31 @@ export default function HistorialInspeccionesAreasPage() {
 
       <main className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* ── KPIs ────────────────────────────────────── */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-6">
           <div className="bg-white/10 backdrop-blur-xl rounded-xl border border-white/15 p-4">
-            <p className="text-[11px] text-white/40 mb-1">Total</p>
+            <p className="text-[11px] text-white/40 mb-1">Total Inspecciones</p>
             <p className="text-2xl font-bold text-white">{inspecciones.length}</p>
           </div>
           <div className="bg-green-500/10 backdrop-blur-xl rounded-xl border border-green-400/20 p-4">
             <p className="text-[11px] text-green-300/60 mb-1">Completadas</p>
             <p className="text-2xl font-bold text-green-400">{totalCompletadas}</p>
           </div>
+          <div className="bg-blue-500/10 backdrop-blur-xl rounded-xl border border-blue-400/20 p-4">
+            <p className="text-[11px] text-blue-300/60 mb-1">Criterios Evaluados</p>
+            <p className="text-2xl font-bold text-blue-400">{totalCriterios}</p>
+          </div>
           <div className="bg-orange-500/10 backdrop-blur-xl rounded-xl border border-orange-400/20 p-4">
-            <p className="text-[11px] text-orange-300/60 mb-1">Con Acciones</p>
-            <p className="text-2xl font-bold text-orange-400">{totalConAcciones}</p>
+            <p className="text-[11px] text-orange-300/60 mb-1">Acciones</p>
+            <p className="text-2xl font-bold text-orange-400">{totalAcciones}</p>
+            <p className="text-[9px] text-orange-300/40 mt-0.5">{totalConAcciones} inspecciones</p>
           </div>
           <div className="bg-purple-500/10 backdrop-blur-xl rounded-xl border border-purple-400/20 p-4">
-            <p className="text-[11px] text-purple-300/60 mb-1">Este mes</p>
-            <p className="text-2xl font-bold text-purple-400">{estesMes}</p>
+            <p className="text-[11px] text-purple-300/60 mb-1">Firmas</p>
+            <p className="text-2xl font-bold text-purple-400">{totalFirmas}</p>
+          </div>
+          <div className="bg-cyan-500/10 backdrop-blur-xl rounded-xl border border-cyan-400/20 p-4">
+            <p className="text-[11px] text-cyan-300/60 mb-1">Este mes</p>
+            <p className="text-2xl font-bold text-cyan-400">{estesMes}</p>
           </div>
         </div>
 
@@ -690,6 +676,12 @@ export default function HistorialInspeccionesAreasPage() {
                         <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${est.bg} ${est.color} border ${est.border}`}>
                           {insp.estado || "—"}
                         </span>
+                        {insp.urlDocumento && (
+                          <span className="px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-300 text-[10px] font-medium flex items-center gap-1">
+                            <FileDown className="w-3 h-3" />
+                            Exportado
+                          </span>
+                        )}
                       </div>
                       <div className="flex items-center gap-3 text-[11px] text-white/40 flex-wrap">
                         <span className="flex items-center gap-1">
@@ -700,16 +692,40 @@ export default function HistorialInspeccionesAreasPage() {
                           <User className="w-3 h-3" />
                           {insp.inspector || "—"}
                         </span>
-                        <span className="flex items-center gap-1">
-                          <ClipboardList className="w-3 h-3" />
-                          {insp.cantidadCriterios || 0} criterios
+                      </div>
+                      {/* Estadísticas de criterios */}
+                      <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                        <span className="text-[10px] text-white/30">Criterios:</span>
+                        <span className="px-1.5 py-0.5 rounded bg-green-500/20 text-green-400 text-[10px] font-semibold">
+                          ✓ {insp.criteriosBuenos || 0}
                         </span>
-                        {insp.cantidadAcciones > 0 && (
+                        {(insp.criteriosMalos || 0) > 0 && (
+                          <span className="px-1.5 py-0.5 rounded bg-red-500/20 text-red-400 text-[10px] font-semibold">
+                            ✗ {insp.criteriosMalos}
+                          </span>
+                        )}
+                        {(insp.criteriosNA || 0) > 0 && (
+                          <span className="px-1.5 py-0.5 rounded bg-white/10 text-white/50 text-[10px] font-semibold">
+                            N/A {insp.criteriosNA}
+                          </span>
+                        )}
+                        <span className="text-[10px] text-white/20">|</span>
+                        {insp.cantidadAcciones > 0 ? (
                           <span className="px-1.5 py-0.5 rounded bg-orange-500/20 text-orange-300 text-[10px] font-medium">
                             {insp.cantidadAcciones} acción{insp.cantidadAcciones !== 1 ? "es" : ""}
                           </span>
+                        ) : (
+                          <span className="text-[10px] text-white/30">Sin acciones</span>
+                        )}
+                        {insp.cantidadResponsables > 0 && (
+                          <span className="px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-300 text-[10px] font-medium">
+                            {insp.cantidadResponsables} firma{insp.cantidadResponsables !== 1 ? "s" : ""}
+                          </span>
                         )}
                       </div>
+                      {insp.observaciones && (
+                        <p className="text-[10px] text-white/30 mt-1 line-clamp-1">{insp.observaciones}</p>
+                      )}
                     </div>
 
                     {/* Botones de acción */}
@@ -717,12 +733,32 @@ export default function HistorialInspeccionesAreasPage() {
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
-                          openExportModal(insp);
+                          handleExportIndividual(insp);
                         }}
-                        className="p-1.5 rounded-lg bg-green-500/15 border border-green-400/25 text-green-400 hover:bg-green-500/25 transition-all"
+                        disabled={exportingId === insp.id}
+                        className="p-1.5 rounded-lg bg-green-500/15 border border-green-400/25 text-green-400 hover:bg-green-500/25 transition-all disabled:opacity-50"
                         title="Exportar Excel"
                       >
-                        <FileDown className="w-4 h-4" />
+                        {exportingId === insp.id ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                          <FileDown className="w-4 h-4" />
+                        )}
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleExportPdfIndividual(insp);
+                        }}
+                        disabled={exportingPdfId === insp.id}
+                        className="p-1.5 rounded-lg bg-red-500/15 border border-red-400/25 text-red-400 hover:bg-red-500/25 transition-all disabled:opacity-50"
+                        title="Exportar PDF"
+                      >
+                        {exportingPdfId === insp.id ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                          <FileText className="w-4 h-4" />
+                        )}
                       </button>
                       <div className={`p-1.5 rounded-lg ${isExpanded ? "bg-blue-500/20" : "bg-white/10"} transition-all`}>
                         {isExpanded ? (
@@ -743,6 +779,48 @@ export default function HistorialInspeccionesAreasPage() {
                         </div>
                       ) : detalle ? (
                         <div className="p-4 space-y-4">
+                          {/* Resumen estadístico */}
+                          {(() => {
+                            const buenos = detalle.criterios?.filter(c => c.condicion === "Bueno").length || 0;
+                            const malos = detalle.criterios?.filter(c => c.condicion === "Malo").length || 0;
+                            const na = detalle.criterios?.filter(c => c.condicion === "NA").length || 0;
+                            const total = detalle.criterios?.length || 0;
+                            const porcentajeCumplimiento = total > 0 ? Math.round((buenos / (total - na)) * 100) || 0 : 0;
+                            
+                            return (
+                              <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+                                <div className="p-3 rounded-lg bg-white/5 border border-white/10 text-center">
+                                  <p className="text-2xl font-bold text-white">{total}</p>
+                                  <p className="text-[10px] text-white/40">Criterios evaluados</p>
+                                </div>
+                                <div className="p-3 rounded-lg bg-green-500/10 border border-green-400/20 text-center">
+                                  <p className="text-2xl font-bold text-green-400">{buenos}</p>
+                                  <p className="text-[10px] text-green-300/60">Buenos</p>
+                                </div>
+                                <div className="p-3 rounded-lg bg-red-500/10 border border-red-400/20 text-center">
+                                  <p className="text-2xl font-bold text-red-400">{malos}</p>
+                                  <p className="text-[10px] text-red-300/60">Hallazgos</p>
+                                </div>
+                                <div className="p-3 rounded-lg bg-white/5 border border-white/10 text-center">
+                                  <p className="text-2xl font-bold text-white/50">{na}</p>
+                                  <p className="text-[10px] text-white/40">No aplica</p>
+                                </div>
+                                <div className={`p-3 rounded-lg text-center ${
+                                  porcentajeCumplimiento >= 80 ? "bg-green-500/10 border border-green-400/20" :
+                                  porcentajeCumplimiento >= 60 ? "bg-yellow-500/10 border border-yellow-400/20" :
+                                  "bg-red-500/10 border border-red-400/20"
+                                }`}>
+                                  <p className={`text-2xl font-bold ${
+                                    porcentajeCumplimiento >= 80 ? "text-green-400" :
+                                    porcentajeCumplimiento >= 60 ? "text-yellow-400" :
+                                    "text-red-400"
+                                  }`}>{porcentajeCumplimiento}%</p>
+                                  <p className="text-[10px] text-white/40">Cumplimiento</p>
+                                </div>
+                              </div>
+                            );
+                          })()}
+
                           {/* Observaciones generales */}
                           {detalle.observaciones && (
                             <div className="p-3 rounded-lg bg-white/5 border border-white/10">
@@ -799,13 +877,30 @@ export default function HistorialInspeccionesAreasPage() {
                                     <div className="flex items-start justify-between gap-2">
                                       <div className="flex-1">
                                         <p className="text-white/80 text-sm">{acc.descripcion}</p>
-                                        <div className="flex items-center gap-3 mt-1 text-[10px] text-white/40">
+                                        {/* Criterio relacionado */}
+                                        {acc.criterioRelacionado && (
+                                          <div className="mt-2 p-2 rounded bg-white/5 border border-white/10">
+                                            <p className="text-[10px] text-white/40 mb-1">Criterio relacionado:</p>
+                                            <div className="flex items-center gap-2 flex-wrap">
+                                              <span className="text-[10px] text-white/50">{acc.criterioRelacionado.categoria} →</span>
+                                              <span className="text-white/70 text-xs">{acc.criterioRelacionado.criterio}</span>
+                                              <span className={`px-1.5 py-0.5 rounded text-[9px] font-semibold ${
+                                                acc.criterioRelacionado.condicion === "Bueno" ? "bg-green-500/20 text-green-400" :
+                                                acc.criterioRelacionado.condicion === "Malo" ? "bg-red-500/20 text-red-400" :
+                                                "bg-white/10 text-white/50"
+                                              }`}>
+                                                {acc.criterioRelacionado.condicion}
+                                              </span>
+                                            </div>
+                                          </div>
+                                        )}
+                                        <div className="flex items-center gap-3 mt-2 text-[10px] text-white/40 flex-wrap">
                                           <span className="px-1.5 py-0.5 rounded bg-white/10">{acc.tipo}</span>
-                                          <span>Responsable: {acc.responsable}</span>
-                                          <span>Fecha propuesta: {formatFecha(acc.fechaPropuesta)}</span>
+                                          <span>Responsable: <span className="text-white/60">{acc.responsable || "Sin asignar"}</span></span>
+                                          <span>Fecha propuesta: <span className="text-white/60">{formatFecha(acc.fechaPropuesta)}</span></span>
                                         </div>
                                       </div>
-                                      <span className={`px-2 py-0.5 rounded text-[10px] font-semibold ${
+                                      <span className={`px-2 py-0.5 rounded text-[10px] font-semibold shrink-0 ${
                                         acc.estado === "Cerrada" ? "bg-green-500/20 text-green-300" :
                                         acc.estado === "En Proceso" ? "bg-yellow-500/20 text-yellow-300" :
                                         "bg-red-500/20 text-red-300"
@@ -920,415 +1015,6 @@ export default function HistorialInspeccionesAreasPage() {
           </div>
         </div>
       )}
-
-      {/* ═══════════════════════════════════════════════════
-          Modal de Exportar con Firmas de Confirmación
-      ════════════════════════════════════════════════════ */}
-      {showExportModal && (
-        <ExportConfirmationModal
-          inspeccionInfo={exportInspeccionInfo}
-          step={exportStep}
-          error={exportError}
-          // Responsable
-          cedulaResponsable={cedulaResponsable}
-          setCedulaResponsable={setCedulaResponsable}
-          responsableValidado={responsableValidado}
-          firmaResponsable={firmaResponsable}
-          onValidarResponsable={validarResponsable}
-          onConfirmarFirmaResponsable={confirmarFirmaResponsable}
-          // COPASST
-          cedulaCopasst={cedulaCopasst}
-          setCedulaCopasst={setCedulaCopasst}
-          copasstValidado={copasstValidado}
-          firmaCopasst={firmaCopasst}
-          onValidarCopasst={validarCopasst}
-          onConfirmarFirmaCopasst={confirmarFirmaCopasst}
-          // Acciones
-          onClose={closeExportModal}
-        />
-      )}
-    </div>
-  );
-}
-
-// ══════════════════════════════════════════════════════════
-// Componente Modal de Exportación con Confirmación
-// ══════════════════════════════════════════════════════════
-function ExportConfirmationModal({
-  inspeccionInfo,
-  step,
-  error,
-  cedulaResponsable,
-  setCedulaResponsable,
-  responsableValidado,
-  firmaResponsable,
-  onValidarResponsable,
-  onConfirmarFirmaResponsable,
-  cedulaCopasst,
-  setCedulaCopasst,
-  copasstValidado,
-  firmaCopasst,
-  onValidarCopasst,
-  onConfirmarFirmaCopasst,
-  onClose,
-}: {
-  inspeccionInfo: { id: string; idInspeccion: string; fecha: string; area: string } | null;
-  step: ExportStep;
-  error: string | null;
-  cedulaResponsable: string;
-  setCedulaResponsable: (v: string) => void;
-  responsableValidado: PersonaValidada | null;
-  firmaResponsable: string | null;
-  onValidarResponsable: () => void;
-  onConfirmarFirmaResponsable: (dataUrl: string) => void;
-  cedulaCopasst: string;
-  setCedulaCopasst: (v: string) => void;
-  copasstValidado: PersonaValidada | null;
-  firmaCopasst: string | null;
-  onValidarCopasst: () => void;
-  onConfirmarFirmaCopasst: (dataUrl: string) => void;
-  onClose: () => void;
-}) {
-  const showSigningResponsable = step === "signing-responsable";
-  const showSigningCopasst = step === "signing-copasst";
-  const isValidating = step === "validating-responsable" || step === "validating-copasst";
-  const isGenerating = step === "generating";
-
-  const currentPhase = !responsableValidado || !firmaResponsable ? 1 : 2;
-  const areaStyle = AREA_STYLES[inspeccionInfo?.area || ""] || { bg: "bg-white/10", text: "text-white/60", border: "border-white/20" };
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative bg-slate-900/95 backdrop-blur-xl rounded-2xl border border-white/20 w-full max-w-lg overflow-hidden">
-        {/* Header */}
-        <div className="p-4 border-b border-white/10 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-green-500/20 border border-green-400/30 flex items-center justify-center">
-              <FileSpreadsheet className="w-5 h-5 text-green-400" />
-            </div>
-            <div>
-              <h3 className="text-white font-semibold">Exportar Inspección</h3>
-              <p className="text-white/50 text-xs flex items-center gap-2">
-                {inspeccionInfo?.idInspeccion}
-                <span className={`px-1.5 py-0.5 rounded ${areaStyle.bg} ${areaStyle.text} text-[9px]`}>
-                  {inspeccionInfo?.area}
-                </span>
-              </p>
-            </div>
-          </div>
-          <button
-            onClick={onClose}
-            disabled={isGenerating}
-            className="p-1.5 rounded-lg bg-white/10 text-white/60 hover:bg-white/20 transition-all cursor-pointer disabled:opacity-50"
-          >
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-
-        {/* Indicador de pasos */}
-        <div className="px-4 pt-4">
-          <div className="flex items-center gap-2 mb-4">
-            <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium ${
-              currentPhase === 1 ? "bg-blue-500/20 text-blue-300 border border-blue-400/30" :
-              firmaResponsable ? "bg-green-500/20 text-green-300 border border-green-400/30" : "bg-white/10 text-white/40 border border-white/15"
-            }`}>
-              {firmaResponsable ? <Check className="w-3 h-3" /> : <span>1</span>}
-              <span>Responsable</span>
-            </div>
-            <div className="flex-1 h-px bg-white/15" />
-            <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium ${
-              currentPhase === 2 ? "bg-blue-500/20 text-blue-300 border border-blue-400/30" :
-              firmaCopasst ? "bg-green-500/20 text-green-300 border border-green-400/30" : "bg-white/10 text-white/40 border border-white/15"
-            }`}>
-              {firmaCopasst ? <Check className="w-3 h-3" /> : <span>2</span>}
-              <span>COPASST</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Error */}
-        {error && (
-          <div className="mx-4 mb-4 flex items-center gap-2 p-3 rounded-lg bg-red-500/15 border border-red-400/25 text-red-300 text-sm">
-            <AlertTriangle className="w-4 h-4 shrink-0" />
-            <p>{error}</p>
-          </div>
-        )}
-
-        {/* Contenido según paso */}
-        <div className="p-4">
-          {isGenerating ? (
-            <div className="py-8 text-center">
-              <Loader2 className="w-10 h-10 text-green-400 animate-spin mx-auto mb-3" />
-              <p className="text-white font-medium">Generando archivo Excel...</p>
-              <p className="text-white/50 text-sm mt-1">Incluyendo firmas de confirmación</p>
-            </div>
-          ) : showSigningResponsable ? (
-            <SignaturePanel
-              personaValidada={responsableValidado!}
-              titulo="Firma del Responsable de la Inspección"
-              onConfirm={onConfirmarFirmaResponsable}
-              onCancel={onClose}
-            />
-          ) : showSigningCopasst ? (
-            <SignaturePanel
-              personaValidada={copasstValidado!}
-              titulo="Firma del Representante COPASST"
-              onConfirm={onConfirmarFirmaCopasst}
-              onCancel={onClose}
-            />
-          ) : currentPhase === 1 ? (
-            <div className="space-y-4">
-              <div className="flex items-center gap-3 p-4 rounded-xl bg-blue-500/10 border border-blue-400/20">
-                <IdCard className="w-8 h-8 text-blue-400" />
-                <div>
-                  <p className="text-white font-medium">Responsable de la Inspección</p>
-                  <p className="text-white/50 text-sm">Ingrese su cédula para validar su identidad</p>
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-white/70 mb-2">Número de Cédula</label>
-                <input
-                  type="text"
-                  value={cedulaResponsable}
-                  onChange={(e) => setCedulaResponsable(e.target.value.replace(/\D/g, ""))}
-                  placeholder="Ej: 1234567890"
-                  className="w-full px-4 py-3 rounded-xl bg-white/10 border border-white/20 text-white placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-blue-400/50 text-lg tracking-wider"
-                  disabled={isValidating}
-                  autoFocus
-                />
-              </div>
-
-              <button
-                onClick={onValidarResponsable}
-                disabled={isValidating || !cedulaResponsable.trim()}
-                className="w-full py-3 rounded-xl bg-blue-500/20 border border-blue-400/30 text-blue-300 font-semibold hover:bg-blue-500/30 transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-              >
-                {isValidating ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    Validando...
-                  </>
-                ) : (
-                  <>
-                    <ShieldCheck className="w-4 h-4" />
-                    Validar Identidad
-                  </>
-                )}
-              </button>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              {/* Mostrar responsable confirmado */}
-              <div className="flex items-center gap-3 p-3 rounded-xl bg-green-500/10 border border-green-400/20">
-                <div className="w-10 h-10 rounded-full bg-green-500/20 flex items-center justify-center">
-                  <Check className="w-5 h-5 text-green-400" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-green-300 text-xs font-medium">Responsable confirmado</p>
-                  <p className="text-white font-medium truncate">{responsableValidado?.nombreCompleto}</p>
-                </div>
-                <Image
-                  src={firmaResponsable!}
-                  alt="Firma"
-                  width={60}
-                  height={30}
-                  className="rounded border border-white/20"
-                />
-              </div>
-
-              <div className="flex items-center gap-3 p-4 rounded-xl bg-purple-500/10 border border-purple-400/20">
-                <IdCard className="w-8 h-8 text-purple-400" />
-                <div>
-                  <p className="text-white font-medium">Representante COPASST</p>
-                  <p className="text-white/50 text-sm">Ingrese su cédula para validar su identidad</p>
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-white/70 mb-2">Número de Cédula</label>
-                <input
-                  type="text"
-                  value={cedulaCopasst}
-                  onChange={(e) => setCedulaCopasst(e.target.value.replace(/\D/g, ""))}
-                  placeholder="Ej: 1234567890"
-                  className="w-full px-4 py-3 rounded-xl bg-white/10 border border-white/20 text-white placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-purple-400/50 text-lg tracking-wider"
-                  disabled={isValidating}
-                  autoFocus
-                />
-              </div>
-
-              <button
-                onClick={onValidarCopasst}
-                disabled={isValidating || !cedulaCopasst.trim()}
-                className="w-full py-3 rounded-xl bg-purple-500/20 border border-purple-400/30 text-purple-300 font-semibold hover:bg-purple-500/30 transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-              >
-                {isValidating ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    Validando...
-                  </>
-                ) : (
-                  <>
-                    <ShieldCheck className="w-4 h-4" />
-                    Validar Identidad
-                  </>
-                )}
-              </button>
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ══════════════════════════════════════════════════════════
-// Componente Panel de Firma
-// ══════════════════════════════════════════════════════════
-function SignaturePanel({
-  personaValidada,
-  titulo,
-  onConfirm,
-  onCancel,
-}: {
-  personaValidada: PersonaValidada;
-  titulo: string;
-  onConfirm: (dataUrl: string) => void;
-  onCancel: () => void;
-}) {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const isDrawing = useRef(false);
-  const lastPos = useRef({ x: 0, y: 0 });
-  const hasStrokes = useRef(false);
-  const [isEmpty, setIsEmpty] = useState(true);
-
-  const getPos = (e: React.MouseEvent | React.TouchEvent) => {
-    const canvas = canvasRef.current!;
-    const rect = canvas.getBoundingClientRect();
-    const scaleX = canvas.width / rect.width;
-    const scaleY = canvas.height / rect.height;
-    if ("touches" in e) {
-      const touch = e.touches[0];
-      return {
-        x: (touch.clientX - rect.left) * scaleX,
-        y: (touch.clientY - rect.top) * scaleY,
-      };
-    }
-    return {
-      x: (e.clientX - rect.left) * scaleX,
-      y: (e.clientY - rect.top) * scaleY,
-    };
-  };
-
-  const startDraw = (e: React.MouseEvent | React.TouchEvent) => {
-    e.preventDefault();
-    isDrawing.current = true;
-    lastPos.current = getPos(e);
-    hasStrokes.current = true;
-    setIsEmpty(false);
-  };
-
-  const draw = (e: React.MouseEvent | React.TouchEvent) => {
-    if (!isDrawing.current) return;
-    e.preventDefault();
-    const ctx = canvasRef.current?.getContext("2d");
-    if (!ctx) return;
-    const pos = getPos(e);
-    ctx.beginPath();
-    ctx.moveTo(lastPos.current.x, lastPos.current.y);
-    ctx.lineTo(pos.x, pos.y);
-    ctx.strokeStyle = "#000000";
-    ctx.lineWidth = 2.5;
-    ctx.lineCap = "round";
-    ctx.lineJoin = "round";
-    ctx.stroke();
-    lastPos.current = pos;
-  };
-
-  const stopDraw = () => {
-    isDrawing.current = false;
-  };
-
-  const clearCanvas = () => {
-    const ctx = canvasRef.current?.getContext("2d");
-    if (!ctx || !canvasRef.current) return;
-    ctx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
-    hasStrokes.current = false;
-    setIsEmpty(true);
-  };
-
-  const confirmSignature = () => {
-    if (!canvasRef.current || !hasStrokes.current) return;
-    const dataUrl = canvasRef.current.toDataURL("image/png");
-    onConfirm(dataUrl);
-  };
-
-  return (
-    <div className="space-y-4">
-      <div className="flex items-center gap-3 p-3 rounded-xl bg-green-500/10 border border-green-400/20">
-        <div className="w-10 h-10 rounded-full bg-green-500/20 flex items-center justify-center">
-          <CheckCircle className="w-5 h-5 text-green-400" />
-        </div>
-        <div className="flex-1 min-w-0">
-          <p className="text-green-300 text-xs font-medium">Identidad verificada</p>
-          <p className="text-white font-medium truncate">{personaValidada.nombreCompleto}</p>
-          <p className="text-white/50 text-[10px]">{personaValidada.rol || "—"}</p>
-        </div>
-      </div>
-
-      <div>
-        <p className="text-sm text-white/70 font-medium mb-2">{titulo}</p>
-        <div className="relative rounded-xl overflow-hidden border border-white/20 bg-white">
-          <canvas
-            ref={canvasRef}
-            width={600}
-            height={200}
-            className="w-full h-[160px] cursor-crosshair touch-none"
-            onMouseDown={startDraw}
-            onMouseMove={draw}
-            onMouseUp={stopDraw}
-            onMouseLeave={stopDraw}
-            onTouchStart={startDraw}
-            onTouchMove={draw}
-            onTouchEnd={stopDraw}
-          />
-          {isEmpty && (
-            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-              <p className="text-gray-400 text-sm flex items-center gap-2">
-                <PenTool className="w-4 h-4" />
-                Firme aquí
-              </p>
-            </div>
-          )}
-        </div>
-      </div>
-
-      <div className="flex gap-2">
-        <button
-          onClick={clearCanvas}
-          className="flex-1 py-2.5 rounded-lg bg-white/10 border border-white/15 text-white/60 text-sm font-medium hover:bg-white/15 transition-all cursor-pointer flex items-center justify-center gap-1.5"
-        >
-          <Eraser className="w-4 h-4" />
-          Limpiar
-        </button>
-        <button
-          onClick={onCancel}
-          className="flex-1 py-2.5 rounded-lg bg-red-500/20 border border-red-400/30 text-red-300 text-sm font-medium hover:bg-red-500/30 transition-all cursor-pointer flex items-center justify-center gap-1.5"
-        >
-          <X className="w-4 h-4" />
-          Cancelar
-        </button>
-        <button
-          onClick={confirmSignature}
-          disabled={isEmpty}
-          className="flex-1 py-2.5 rounded-lg bg-green-500/25 border border-green-400/30 text-green-300 text-sm font-semibold hover:bg-green-500/35 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-1.5"
-        >
-          <Check className="w-4 h-4" />
-          Confirmar
-        </button>
-      </div>
     </div>
   );
 }

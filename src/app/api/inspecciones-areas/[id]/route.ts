@@ -65,10 +65,15 @@ export async function GET(
 
     const cabecera = cabeceraData.records[0];
     const cabeceraRecordId = cabecera.id;
+    // IMPORTANTE: El parámetro 'id' es el idInspeccion (ej: "INSPA-PIR-...")
+    // ARRAYJOIN devuelve el campo primario (idInspeccion), no el record ID
+    // Por eso usamos 'id' directamente en los filtros ARRAYJOIN
 
     // 2. Obtener detalles (criterios evaluados)
+    // IMPORTANTE: Airtable requiere usar el NOMBRE del campo en fórmulas, no el field ID
+    // Y ARRAYJOIN devuelve el campo primario (idInspeccion), no el record ID
     const detalleUrl = getSGSSTUrl(airtableSGSSTConfig.detalleInspeccionAreasTableId);
-    const detalleFilter = `FIND('${cabeceraRecordId}', ARRAYJOIN({${detalleInspeccionAreasFields.INSPECCION_LINK}}))`;
+    const detalleFilter = `FIND('${id}', ARRAYJOIN({Inspección})) > 0`;
 
     const params2 = new URLSearchParams({
       filterByFormula: detalleFilter,
@@ -94,8 +99,10 @@ export async function GET(
     }
 
     // 3. Obtener acciones correctivas
+    // IMPORTANTE: Airtable requiere usar el NOMBRE del campo en fórmulas, no el field ID
+    // Y ARRAYJOIN devuelve el campo primario (idInspeccion), no el record ID
     const accionesUrl = getSGSSTUrl(airtableSGSSTConfig.accionesCorrectivasAreasTableId);
-    const accionesFilter = `FIND('${cabeceraRecordId}', ARRAYJOIN({${accionesCorrectivasAreasFields.INSPECCION_LINK}}))`;
+    const accionesFilter = `FIND('${id}', ARRAYJOIN({Inspección})) > 0`;
 
     const params3 = new URLSearchParams({
       filterByFormula: accionesFilter,
@@ -111,21 +118,40 @@ export async function GET(
     let acciones: unknown[] = [];
     if (accionesResponse.ok) {
       const accionesData: AirtableResponse = await accionesResponse.json();
-      acciones = accionesData.records.map((r) => ({
-        id: r.id,
-        descripcion: r.fields[accionesCorrectivasAreasFields.DESCRIPCION] as string,
-        tipo: r.fields[accionesCorrectivasAreasFields.TIPO] as string,
-        responsable: r.fields[accionesCorrectivasAreasFields.RESPONSABLE] as string,
-        fechaPropuesta: r.fields[accionesCorrectivasAreasFields.FECHA_PROPUESTA] as string,
-        estado: r.fields[accionesCorrectivasAreasFields.ESTADO] as string,
-        fechaCierre: (r.fields[accionesCorrectivasAreasFields.FECHA_CIERRE] as string) || null,
-        evidenciaUrl: (r.fields[accionesCorrectivasAreasFields.EVIDENCIA_URL] as string) || null,
-      }));
+      acciones = accionesData.records.map((r) => {
+        // Obtener el criterio relacionado si existe
+        const criterioLinkIds = r.fields[accionesCorrectivasAreasFields.CRITERIO_LINK] as string[] | undefined;
+        const criterioRelacionadoId = criterioLinkIds?.[0] || null;
+        
+        // Buscar el criterio en la lista de criterios cargados
+        const criterioRelacionado = criterioRelacionadoId 
+          ? (criterios as { id: string; categoria: string; criterio: string; condicion: string }[]).find(c => c.id === criterioRelacionadoId)
+          : null;
+
+        return {
+          id: r.id,
+          descripcion: r.fields[accionesCorrectivasAreasFields.DESCRIPCION] as string,
+          tipo: r.fields[accionesCorrectivasAreasFields.TIPO] as string,
+          responsable: r.fields[accionesCorrectivasAreasFields.RESPONSABLE] as string,
+          fechaPropuesta: r.fields[accionesCorrectivasAreasFields.FECHA_PROPUESTA] as string,
+          estado: r.fields[accionesCorrectivasAreasFields.ESTADO] as string,
+          fechaCierre: (r.fields[accionesCorrectivasAreasFields.FECHA_CIERRE] as string) || null,
+          evidenciaUrl: (r.fields[accionesCorrectivasAreasFields.EVIDENCIA_URL] as string) || null,
+          // Información del criterio relacionado
+          criterioRelacionado: criterioRelacionado ? {
+            id: criterioRelacionado.id,
+            categoria: criterioRelacionado.categoria,
+            criterio: criterioRelacionado.criterio,
+            condicion: criterioRelacionado.condicion,
+          } : null,
+        };
+      });
     }
 
     // 4. Obtener responsables (sin descifrar firmas)
+    // IMPORTANTE: Usar el NOMBRE del campo y el idInspeccion (lo que ARRAYJOIN devuelve)
     const respUrl = getSGSSTUrl(airtableSGSSTConfig.respInspeccionAreasTableId);
-    const respFilter = `FIND('${cabeceraRecordId}', ARRAYJOIN({${respInspeccionAreasFields.INSPECCION_LINK}}))`;
+    const respFilter = `FIND('${id}', ARRAYJOIN({Inspección})) > 0`;
 
     const params4 = new URLSearchParams({
       filterByFormula: respFilter,
