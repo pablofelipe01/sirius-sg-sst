@@ -44,6 +44,13 @@ interface DetalleEquipoPayload {
   correasArnes: CondicionEquipo;
   fechaVencimiento: string | null;
   observaciones: string;
+  // Datos detallados serializados (opcional)
+  criteriosExtintorDetalle?: Record<string, { estado: string | null }> | null;
+  elementosBotiquin?: Record<string, { estado: string | null; cantidad: string; fechaVencimiento: string }> | null;
+  elementosKit?: Record<string, { estado: string | null; cantidad: string; fechaVencimiento: string }> | null;
+  verificacionesKit?: Record<string, { respuesta: boolean | null }> | null;
+  elementosCamilla?: Record<string, { estado: string | null }> | null;
+  infoExtintor?: { claseAgente: string; tipoExtintor: string; capacidad: string; fechaProximaRecarga: string } | null;
 }
 
 interface ResponsablePayload {
@@ -170,6 +177,25 @@ export async function POST(request: NextRequest) {
       respEquiposFields,
     } = airtableSGSSTConfig;
 
+    // Validar que los field IDs críticos estén definidos
+    const missingFields: string[] = [];
+    if (!airtableSGSSTConfig.detalleEquiposTableId) missingFields.push("detalleEquiposTableId");
+    if (!detalleEquiposFields.ID) missingFields.push("DETEQ_ID");
+    if (!detalleEquiposFields.INSPECCION_LINK) missingFields.push("DETEQ_INSPECCION_LINK");
+    if (!detalleEquiposFields.EQUIPO_LINK) missingFields.push("DETEQ_EQUIPO_LINK");
+    if (!detalleEquiposFields.CATEGORIA) missingFields.push("DETEQ_CATEGORIA");
+    if (!detalleEquiposFields.AREA) missingFields.push("DETEQ_AREA");
+    if (!detalleEquiposFields.ESTADO_GENERAL) missingFields.push("DETEQ_ESTADO_GENERAL");
+    if (!detalleEquiposFields.OBSERVACIONES) missingFields.push("DETEQ_OBSERVACIONES");
+    
+    if (missingFields.length > 0) {
+      console.error("Field IDs faltantes:", missingFields);
+      return NextResponse.json(
+        { success: false, message: `Configuración incompleta: faltan field IDs: ${missingFields.join(", ")}` },
+        { status: 500 }
+      );
+    }
+
     const inspeccionId = generateInspeccionId();
 
     console.log("Creando inspección equipos:", {
@@ -177,6 +203,8 @@ export async function POST(request: NextRequest) {
       fecha: payload.fechaInspeccion,
       inspector: payload.inspector,
       cantidadEquipos: payload.detalles.length,
+      detalleTableId: airtableSGSSTConfig.detalleEquiposTableId,
+      fieldIdMuestra: detalleEquiposFields.ID,
     });
 
     // 1. Crear cabecera
@@ -213,14 +241,78 @@ export async function POST(request: NextRequest) {
 
     // 2. Crear detalles (lotes de 10)
     const detalleUrl = getSGSSTUrl(airtableSGSSTConfig.detalleEquiposTableId);
+    
+    // Mapeo de categorías: Catálogo Equipos → Detalle Inspeccion
+    // El catálogo usa tildes, la tabla detalle no las acepta
+    const CATEGORIA_MAP: Record<string, string> = {
+      "Botiquín": "Botiquin",
+      "Botiquin": "Botiquin",
+      "Extintor": "Extintor",
+      "Camilla": "Camilla",
+      "Kit Derrames": "Kit Derrames",
+    };
+    
     const detalleRecords = payload.detalles.map((det) => {
+      // Limpiar posibles comillas extras de la categoría y mapear a valor aceptado
+      const categoriaOriginal = det.categoria?.replace(/^"|"$/g, "").trim() || "";
+      const categoriaNormalizada = CATEGORIA_MAP[categoriaOriginal] || categoriaOriginal;
+      
+      // Debug: verificar todos los valores recibidos
+      console.log("=== Detalle equipo ===");
+      console.log("Categoria original:", categoriaOriginal, "→ normalizada:", categoriaNormalizada);
+      console.log("Criterios comunes:", {
+        estadoGeneral: det.estadoGeneral,
+        senalizacion: det.senalizacion,
+        accesibilidad: det.accesibilidad,
+      });
+      console.log("Criterios extintor:", {
+        presionManometro: det.presionManometro,
+        manguera: det.manguera,
+        pinSeguridad: det.pinSeguridad,
+        soporteBase: det.soporteBase,
+      });
+      console.log("Criterios botiquin/kit:", {
+        completitudElementos: det.completitudElementos,
+        estadoContenedor: det.estadoContenedor,
+      });
+      console.log("Datos detallados presentes:", {
+        criteriosExtintorDetalle: !!det.criteriosExtintorDetalle,
+        elementosBotiquin: !!det.elementosBotiquin,
+        elementosKit: !!det.elementosKit,
+        verificacionesKit: !!det.verificacionesKit,
+        elementosCamilla: !!det.elementosCamilla,
+        infoExtintor: !!det.infoExtintor,
+      });
+
+      // Preparar observaciones con datos detallados si existen
+      let observacionesFinales = det.observaciones || "";
+      
+      // Agregar resumen de datos detallados si existen (para no perder info)
+      const datosDetallados: Record<string, unknown> = {};
+      if (det.criteriosExtintorDetalle) datosDetallados.criteriosExtintor = det.criteriosExtintorDetalle;
+      if (det.elementosBotiquin) datosDetallados.elementosBotiquin = det.elementosBotiquin;
+      if (det.elementosKit) datosDetallados.elementosKit = det.elementosKit;
+      if (det.verificacionesKit) datosDetallados.verificacionesKit = det.verificacionesKit;
+      if (det.elementosCamilla) datosDetallados.elementosCamilla = det.elementosCamilla;
+      if (det.infoExtintor) datosDetallados.infoExtintor = det.infoExtintor;
+      
+      if (Object.keys(datosDetallados).length > 0) {
+        // Agregar JSON de datos detallados a observaciones (máx 5000 caracteres para Airtable)
+        const jsonDetallado = JSON.stringify(datosDetallados);
+        if (jsonDetallado.length < 4500 && observacionesFinales.length < 500) {
+          observacionesFinales = observacionesFinales 
+            ? `${observacionesFinales}\n---DATOS_DETALLADOS---\n${jsonDetallado}`
+            : `---DATOS_DETALLADOS---\n${jsonDetallado}`;
+        }
+      }
+      
       const fields: Record<string, unknown> = {
         [detalleEquiposFields.ID]: `${inspeccionId}-${det.codigoEquipo}`,
         [detalleEquiposFields.INSPECCION_LINK]: [cabeceraRecordId],
         [detalleEquiposFields.EQUIPO_LINK]: [det.equipoRecordId],
-        [detalleEquiposFields.CATEGORIA]: det.categoria,
+        [detalleEquiposFields.CATEGORIA]: categoriaNormalizada,
         [detalleEquiposFields.AREA]: det.area,
-        [detalleEquiposFields.OBSERVACIONES]: det.observaciones || "",
+        [detalleEquiposFields.OBSERVACIONES]: observacionesFinales,
       };
 
       // Criterios comunes
@@ -245,12 +337,17 @@ export async function POST(request: NextRequest) {
       // Fecha vencimiento
       if (det.fechaVencimiento) fields[detalleEquiposFields.FECHA_VENCIMIENTO] = det.fechaVencimiento;
 
+      console.log("Fields a guardar:", Object.keys(fields).map(k => `${k}: ${fields[k]}`).join(", "));
+
       return { fields };
     });
 
     const createdDetalleIds: string[] = [];
+    const detalleErrors: string[] = [];
     for (let i = 0; i < detalleRecords.length; i += 10) {
       const batch = detalleRecords.slice(i, i + 10);
+      // Debug: verificar batch completo antes de enviar
+      console.log("Batch detalles a enviar:", JSON.stringify(batch[0]?.fields, null, 2));
       const resp = await fetch(detalleUrl, {
         method: "POST",
         headers: getSGSSTHeaders(),
@@ -260,13 +357,41 @@ export async function POST(request: NextRequest) {
         const data: AirtableResponse = await resp.json();
         createdDetalleIds.push(...data.records.map((r) => r.id));
       } else {
-        console.error("Error creando detalles:", await resp.text());
+        const errorText = await resp.text();
+        console.error("Error creando detalles (status " + resp.status + "):", errorText);
+        detalleErrors.push(errorText);
       }
+    }
+
+    // Si no se creó ningún detalle y hubo errores, retornar error
+    if (createdDetalleIds.length === 0 && detalleErrors.length > 0) {
+      console.error("FALLO TOTAL en detalles. Errores:", detalleErrors);
+      return NextResponse.json(
+        { 
+          success: false, 
+          message: "Error al guardar los detalles de la inspección", 
+          errors: detalleErrors,
+          cabeceraId: cabeceraRecordId,
+        },
+        { status: 500 }
+      );
     }
 
     // 3. Crear responsables (firmas)
     const respUrl = getSGSSTUrl(airtableSGSSTConfig.respEquiposTableId);
     const respRecords = payload.responsables.map((r, idx) => {
+      // Limpiar posibles comillas extras del tipo
+      const tipoLimpio = r.tipo?.replace(/^"|"$/g, "").trim() || "";
+      
+      // Mapear tipos del frontend a tipos de Airtable
+      // Airtable solo acepta: "Responsable", "COPASST"
+      const tipoAirtable = tipoLimpio === "Responsable COPASST" || tipoLimpio === "COPASST" 
+        ? "COPASST" 
+        : "Responsable";
+      
+      // Debug: verificar valores
+      console.log("Responsable - tipo original:", JSON.stringify(r.tipo), "limpio:", tipoLimpio, "airtable:", tipoAirtable);
+      
       let firmaEncriptada = "";
       if (r.firma && AES_SECRET) {
         firmaEncriptada = encryptAES(
@@ -274,7 +399,7 @@ export async function POST(request: NextRequest) {
             signature: r.firma,
             nombre: r.nombre,
             cedula: r.cedula,
-            tipo: r.tipo,
+            tipo: tipoLimpio, // Guardar tipo original en la firma
             area: r.area || null,
             timestamp: new Date().toISOString(),
             inspeccionId,
@@ -283,16 +408,16 @@ export async function POST(request: NextRequest) {
       }
 
       // Generar ID único basado en tipo y área (o índice)
-      const tipoCorto = r.tipo === "Responsable Área" ? "AREA" :
-                        r.tipo === "Responsable SST" ? "SST" : "COPASST";
+      const tipoCorto = tipoLimpio === "Responsable Área" ? "AREA" :
+                        tipoLimpio === "Responsable SST" ? "SST" : "COPASST";
       const areaSuffix = r.area ? `-${r.area.replace(/\s+/g, "")}` : "";
-      const idSuffix = r.tipo === "Responsable Área" ? areaSuffix : `-${idx}`;
+      const idSuffix = tipoLimpio === "Responsable Área" ? areaSuffix : `-${idx}`;
 
       return {
         fields: {
           [respEquiposFields.ID_FIRMA]: `${inspeccionId}-${tipoCorto}${idSuffix}`,
           [respEquiposFields.INSPECCION_LINK]: [cabeceraRecordId],
-          [respEquiposFields.TIPO]: r.tipo,
+          [respEquiposFields.TIPO]: tipoAirtable, // Usar tipo mapeado para Airtable
           [respEquiposFields.NOMBRE]: r.nombre,
           [respEquiposFields.CEDULA]: r.cedula,
           [respEquiposFields.CARGO]: r.cargo,
@@ -303,6 +428,8 @@ export async function POST(request: NextRequest) {
     });
 
     if (respRecords.length > 0) {
+      // Debug: verificar responsables antes de enviar
+      console.log("Responsables a enviar:", JSON.stringify(respRecords[0]?.fields, null, 2));
       const respResponse = await fetch(respUrl, {
         method: "POST",
         headers: getSGSSTHeaders(),

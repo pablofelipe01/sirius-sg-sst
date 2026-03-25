@@ -28,8 +28,8 @@ export async function GET(
     const { inspEquiposFields, detalleEquiposFields, respEquiposFields } =
       airtableSGSSTConfig;
 
-    // 1. Obtener cabecera
-    const cabeceraUrl = `${getSGSSTUrl(airtableSGSSTConfig.inspEquiposTableId)}/${id}`;
+    // 1. Obtener cabecera (con returnFieldsByFieldId para usar field IDs como keys)
+    const cabeceraUrl = `${getSGSSTUrl(airtableSGSSTConfig.inspEquiposTableId)}/${id}?returnFieldsByFieldId=true`;
     const cabeceraRes = await fetch(cabeceraUrl, {
       headers: getSGSSTHeaders(),
       cache: "no-store",
@@ -43,10 +43,16 @@ export async function GET(
     }
 
     const cabeceraData: AirtableRecord = await cabeceraRes.json();
+    
+    // Debug: ver qué campos tenemos
+    console.log("Cabecera fields keys:", Object.keys(cabeceraData.fields));
+    console.log("ID field value:", cabeceraData.fields[inspEquiposFields.ID]);
 
+    const idInspeccion = (cabeceraData.fields[inspEquiposFields.ID] as string) || "";
+    
     const inspeccion = {
       id: cabeceraData.id,
-      idInspeccion: cabeceraData.fields[inspEquiposFields.ID] as string,
+      idInspeccion,
       fecha: cabeceraData.fields[inspEquiposFields.FECHA] as string,
       inspector: cabeceraData.fields[inspEquiposFields.INSPECTOR] as string,
       estado: cabeceraData.fields[inspEquiposFields.ESTADO] as string,
@@ -54,10 +60,27 @@ export async function GET(
         (cabeceraData.fields[inspEquiposFields.OBSERVACIONES] as string) || "",
     };
 
+    // Validar que tenemos el idInspeccion
+    if (!idInspeccion) {
+      console.error("idInspeccion no encontrado. Field ID:", inspEquiposFields.ID);
+      console.error("Fields disponibles:", Object.keys(cabeceraData.fields));
+      return NextResponse.json({
+        success: true,
+        data: { ...inspeccion, detalles: [], responsables: [], totalEquipos: 0 },
+      });
+    }
+
     // 2. Obtener detalles vinculados
+    // Los detalles tienen un ID que incluye el idInspeccion (ej: "INSPEQ-20260324-XXX-EQ001")
+    // Usamos FIND para buscar el idInspeccion dentro del campo ID
     const detalleUrl = getSGSSTUrl(airtableSGSSTConfig.detalleEquiposTableId);
+    
+    // Probar múltiples nombres de campo posibles para el ID
+    const detalleFilter = `FIND('${idInspeccion}', {ID Detalle}) > 0`;
+    console.log("Buscando detalles con filtro:", detalleFilter);
+    
     const detalleParams = new URLSearchParams({
-      filterByFormula: `FIND("${id}", ARRAYJOIN({${detalleEquiposFields.INSPECCION_LINK}}))`,
+      filterByFormula: detalleFilter,
       returnFieldsByFieldId: "true",
       pageSize: "100",
     });
@@ -81,6 +104,8 @@ export async function GET(
         break;
       }
     } while (offset);
+    
+    console.log("Detalles encontrados:", allDetalles.length);
 
     // Resolver nombres de equipos
     const equipoIds = allDetalles
@@ -151,10 +176,14 @@ export async function GET(
       };
     });
 
-    // 3. Obtener responsables
+    // 3. Obtener responsables (firmas)
+    // Los responsables tienen un ID que incluye el idInspeccion (ej: "INSPEQ-20260324-XXX-AREA-Lab")
     const respUrl = getSGSSTUrl(airtableSGSSTConfig.respEquiposTableId);
+    const respFilter = `FIND('${idInspeccion}', {ID Firma}) > 0`;
+    console.log("Buscando responsables con filtro:", respFilter);
+    
     const respParams = new URLSearchParams({
-      filterByFormula: `FIND("${id}", ARRAYJOIN({${respEquiposFields.INSPECCION_LINK}}))`,
+      filterByFormula: respFilter,
       returnFieldsByFieldId: "true",
     });
 
@@ -172,6 +201,9 @@ export async function GET(
         cedula: (r.fields[respEquiposFields.CEDULA] as string) || "",
         cargo: (r.fields[respEquiposFields.CARGO] as string) || "",
       }));
+      console.log("Responsables encontrados:", responsables.length);
+    } else {
+      console.error("Error fetching responsables:", await respRes.text());
     }
 
     return NextResponse.json({

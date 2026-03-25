@@ -152,11 +152,12 @@ type PageState = "idle" | "saving" | "success" | "error";
 // ══════════════════════════════════════════════════════════
 // Constantes
 // ══════════════════════════════════════════════════════════
-const CATEGORIAS = ["Extintor", "Botiquín", "Camilla", "Kit Derrames"] as const;
+// IMPORTANTE: Las categorías DEBEN coincidir con las opciones de Airtable (sin tildes)
+const CATEGORIAS = ["Extintor", "Botiquin", "Camilla", "Kit Derrames"] as const;
 
 const CATEGORIA_CONFIG: Record<string, { color: string; bgColor: string; borderColor: string; icon: string }> = {
   Extintor:        { color: "text-red-400",    bgColor: "bg-red-500/20",    borderColor: "border-red-500/30",    icon: "🧯" },
-  Botiquín:        { color: "text-green-400",  bgColor: "bg-green-500/20",  borderColor: "border-green-500/30",  icon: "🩹" },
+  Botiquin:        { color: "text-green-400",  bgColor: "bg-green-500/20",  borderColor: "border-green-500/30",  icon: "🩹" },
   Camilla:         { color: "text-blue-400",   bgColor: "bg-blue-500/20",   borderColor: "border-blue-500/30",   icon: "🛏️" },
   "Kit Derrames":  { color: "text-yellow-400", bgColor: "bg-yellow-500/20", borderColor: "border-yellow-500/30", icon: "⚠️" },
 };
@@ -642,19 +643,23 @@ export default function InspeccionEquiposPage() {
     tipo: "SST",
     nombre: "",
     cedula: "",
-    cargo: "Responsable SST",
+    cargo: "",
     firma: null,
   });
   const [firmaCOPASST, setFirmaCOPASST] = useState<FirmaGlobal>({
     tipo: "COPASST",
     nombre: "",
     cedula: "",
-    cargo: "Vigía COPASST",
+    cargo: "",
     firma: null,
   });
   const [firmandoGlobal, setFirmandoGlobal] = useState<"SST" | "COPASST" | null>(null);
 
-  // Empleados por área para dropdown de responsables
+  // Responsables SST (miembros del comité COPASST + Responsables SG-SST)
+  const [responsablesSST, setResponsablesSST] = useState<{ id: string; nombre: string; cedula: string; cargo: string }[]>([]);
+  const [cargandoResponsablesSST, setCargandoResponsablesSST] = useState(true);
+
+  // Todos los empleados para dropdown de Responsable de Área
   interface EmpleadoArea {
     id: string;
     nombreCompleto: string;
@@ -664,7 +669,27 @@ export default function InspeccionEquiposPage() {
   const [todosLosEmpleados, setTodosLosEmpleados] = useState<EmpleadoArea[]>([]);
   const [cargandoEmpleados, setCargandoEmpleados] = useState(false);
 
-  // Función para cargar todos los empleados (se llama una vez al inicio)
+  // Cargar responsables SST (miembros del comité)
+  useEffect(() => {
+    async function fetchResponsablesSST() {
+      try {
+        const res = await fetch("/api/inspecciones-areas?responsables=true");
+        if (res.ok) {
+          const data = await res.json();
+          if (data.success && Array.isArray(data.responsables)) {
+            setResponsablesSST(data.responsables);
+          }
+        }
+      } catch (err) {
+        console.error("Error cargando responsables SST:", err);
+      } finally {
+        setCargandoResponsablesSST(false);
+      }
+    }
+    fetchResponsablesSST();
+  }, []);
+
+  // Función para cargar todos los empleados (para Responsable de Área)
   const cargarTodosLosEmpleados = useCallback(async () => {
     if (todosLosEmpleados.length > 0 || cargandoEmpleados) return;
     setCargandoEmpleados(true);
@@ -695,7 +720,16 @@ export default function InspeccionEquiposPage() {
       const res = await fetch("/api/equipos-emergencia");
       const json = await res.json();
       if (json.success && json.data) {
-        const equipos: EquipoItem[] = json.data;
+        // Normalizar categorías: el catálogo usa tildes, pero necesitamos sin tildes
+        const CATEGORIA_NORMALIZE: Record<string, string> = {
+          "Botiquín": "Botiquin",
+          "Botiquin": "Botiquin",
+        };
+        
+        const equipos: EquipoItem[] = json.data.map((e: EquipoItem) => ({
+          ...e,
+          categoria: CATEGORIA_NORMALIZE[e.categoria] || e.categoria,
+        }));
         const inspeccionesIniciales = equipos.map(createEmptyInspeccion);
         setInspecciones(inspeccionesIniciales);
 
@@ -989,7 +1023,7 @@ export default function InspeccionEquiposPage() {
   const llenarDatosPrueba = () => {
     setInspecciones((prev) =>
       prev.map((i) => {
-        if (i.equipo.categoria === "Botiquín") {
+        if (i.equipo.categoria === "Botiquin") {
           // Llenar elementos de botiquín
           const elementosLlenos: Record<string, ElementoBotiquinInspeccion> = {};
           ELEMENTOS_BOTIQUIN.forEach((el) => {
@@ -1074,7 +1108,7 @@ export default function InspeccionEquiposPage() {
 
   // Verificar si un equipo está completamente inspeccionado
   const equipoInspeccionado = (insp: InspeccionEquipo): boolean => {
-    if (insp.equipo.categoria === "Botiquín") {
+    if (insp.equipo.categoria === "Botiquin") {
       // Verificar que todos los elementos tengan estado
       return ELEMENTOS_BOTIQUIN.every((el) => insp.elementosBotiquin[el.id]?.estado !== null);
     }
@@ -1134,25 +1168,116 @@ export default function InspeccionEquiposPage() {
     setErrorMessage(null);
 
     try {
-      const detalles = inspecciones.map((i) => ({
-        equipoRecordId: i.equipoId,
-        codigoEquipo: i.equipo.codigo,
-        nombreEquipo: i.equipo.nombre,
-        categoria: i.equipo.categoria,
-        area: i.equipo.area,
-        estadoGeneral: i.criteriosComunes.estadoGeneral,
-        senalizacion: i.criteriosComunes.senalizacion,
-        accesibilidad: i.criteriosComunes.accesibilidad,
-        presionManometro: i.criteriosExtintor.presionManometro,
-        manguera: i.criteriosExtintor.manguera,
-        pinSeguridad: i.criteriosExtintor.pinSeguridad,
-        soporteBase: i.criteriosExtintor.soporteBase,
-        estructura: i.criteriosCamilla.estructura,
-        correasArnes: i.criteriosCamilla.correasArnes,
-        elementosBotiquin: i.equipo.categoria === "Botiquín" ? i.elementosBotiquin : null,
-        fechaVencimiento: i.fechaVencimiento || null,
-        observaciones: i.observaciones,
-      }));
+      // Helper para convertir estados detallados (B/R/M/NT) a estados simples (Bueno/Malo/NA)
+      const mapEstadoDetallado = (estado: string | null | undefined): "Bueno" | "Malo" | "NA" | null => {
+        if (estado === null || estado === undefined) return null;
+        if (estado === "B") return "Bueno";
+        if (estado === "R" || estado === "M") return "Malo";
+        if (estado === "NT") return "NA";
+        return null;
+      };
+
+      // Helper para calcular estado general de elementos
+      const calcularEstadoGeneral = (
+        elementos: Record<string, { estado: string | null }> | null | undefined
+      ): "Bueno" | "Malo" | "NA" => {
+        if (!elementos) return "NA";
+        const estados = Object.values(elementos).map((e) => e.estado).filter(Boolean);
+        if (estados.length === 0) return "NA";
+        const malos = estados.filter((e) => e === "M" || e === "R").length;
+        if (malos > 0) return "Malo";
+        return "Bueno";
+      };
+
+      // Helper para calcular estado general de criterios de extintor
+      const calcularEstadoExtintor = (
+        criterios: Record<string, { estado: string | null }> | null | undefined
+      ): "Bueno" | "Malo" | "NA" => {
+        if (!criterios) return "NA";
+        const estados = Object.values(criterios).map((c) => c.estado).filter(Boolean);
+        if (estados.length === 0) return "NA";
+        const malos = estados.filter((e) => e === "M" || e === "R").length;
+        if (malos > 0) return "Malo";
+        return "Bueno";
+      };
+
+      const detalles = inspecciones.map((i) => {
+        // Determinar tipo de equipo
+        const isExtintor = i.equipo.categoria === "Extintor";
+        const isBotiquin = i.equipo.categoria === "Botiquin";
+        const isCamilla = i.equipo.categoria === "Camilla";
+        const isKit = i.equipo.categoria === "Kit Derrames";
+
+        // Auto-calcular criterios comunes si no están llenos (para equipos con formularios específicos)
+        let estadoGeneral = i.criteriosComunes.estadoGeneral;
+        let senalizacion = i.criteriosComunes.senalizacion;
+        let accesibilidad = i.criteriosComunes.accesibilidad;
+
+        // Si el equipo tiene formulario específico y criterios comunes en null, calcular
+        if (isExtintor && !estadoGeneral) {
+          estadoGeneral = calcularEstadoExtintor(i.criteriosExtintorDetalle);
+          senalizacion = senalizacion || "Bueno";
+          accesibilidad = accesibilidad || "Bueno";
+        } else if (isBotiquin && !estadoGeneral) {
+          estadoGeneral = calcularEstadoGeneral(i.elementosBotiquin as Record<string, { estado: string | null }>);
+          senalizacion = senalizacion || "Bueno";
+          accesibilidad = accesibilidad || "Bueno";
+        } else if (isCamilla && !estadoGeneral) {
+          estadoGeneral = calcularEstadoGeneral(i.elementosCamilla as Record<string, { estado: string | null }>);
+          senalizacion = senalizacion || "Bueno";
+          accesibilidad = accesibilidad || "Bueno";
+        } else if (isKit && !estadoGeneral) {
+          estadoGeneral = calcularEstadoGeneral(i.elementosKit as Record<string, { estado: string | null }>);
+          senalizacion = senalizacion || "Bueno";
+          accesibilidad = accesibilidad || "Bueno";
+        }
+
+        return {
+          equipoRecordId: i.equipoId,
+          codigoEquipo: i.equipo.codigo,
+          nombreEquipo: i.equipo.nombre,
+          categoria: i.equipo.categoria,
+          area: i.equipo.area,
+          // Criterios comunes (calculados si no están llenos)
+          estadoGeneral,
+          senalizacion,
+          accesibilidad,
+          // Criterios extintor: mapear desde datos detallados si es extintor
+          presionManometro: isExtintor
+            ? mapEstadoDetallado(i.criteriosExtintorDetalle?.presion?.estado)
+            : i.criteriosExtintor.presionManometro,
+          manguera: isExtintor
+            ? mapEstadoDetallado(i.criteriosExtintorDetalle?.boquillaManguera?.estado)
+            : i.criteriosExtintor.manguera,
+          pinSeguridad: isExtintor
+            ? mapEstadoDetallado(i.criteriosExtintorDetalle?.pinSeguridad?.estado)
+            : i.criteriosExtintor.pinSeguridad,
+          soporteBase: isExtintor
+            ? mapEstadoDetallado(i.criteriosExtintorDetalle?.selloGarantia?.estado)
+            : i.criteriosExtintor.soporteBase,
+          // Criterios camilla
+          estructura: isCamilla
+            ? mapEstadoDetallado(i.elementosCamilla?.estructura?.estado)
+            : i.criteriosCamilla.estructura,
+          correasArnes: isCamilla
+            ? mapEstadoDetallado(i.elementosCamilla?.correasArnes?.estado)
+            : i.criteriosCamilla.correasArnes,
+          // Criterios botiquín/kit: calcular completitud basada en elementos
+          completitudElementos: isBotiquin
+            ? calcularEstadoGeneral(i.elementosBotiquin as Record<string, { estado: string | null }>)
+            : (isKit ? calcularEstadoGeneral(i.elementosKit as Record<string, { estado: string | null }>) : null),
+          estadoContenedor: isBotiquin || isKit ? "Bueno" : null,
+          // Datos detallados serializados para guardado completo
+          criteriosExtintorDetalle: isExtintor ? i.criteriosExtintorDetalle : null,
+          elementosBotiquin: isBotiquin ? i.elementosBotiquin : null,
+          elementosKit: isKit ? i.elementosKit : null,
+          verificacionesKit: isKit ? i.verificacionesKit : null,
+          elementosCamilla: isCamilla ? i.elementosCamilla : null,
+          infoExtintor: isExtintor ? i.infoExtintor : null,
+          fechaVencimiento: i.fechaVencimiento || null,
+          observaciones: i.observaciones,
+        };
+      });
 
       const responsables = firmasAreas
         .filter((f) => f.firma !== null && f.nombre.trim() !== "")
@@ -1342,13 +1467,40 @@ export default function InspeccionEquiposPage() {
               <label className="block text-sm font-medium text-white/70 mb-1">
                 Inspector / Responsable
               </label>
-              <input
-                type="text"
-                value={inspector}
-                onChange={(e) => setInspector(e.target.value)}
-                placeholder="Nombre del inspector"
-                className="w-full px-4 py-2.5 rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-red-400/50"
-              />
+              <div className="relative">
+                <select
+                  value={inspector}
+                  onChange={(e) => {
+                    const selectedName = e.target.value;
+                    setInspector(selectedName);
+                    // Pre-cargar automáticamente en Responsable SST
+                    const responsable = responsablesSST.find(r => r.nombre === selectedName);
+                    if (responsable) {
+                      setFirmaSST({
+                        tipo: "SST",
+                        nombre: responsable.nombre,
+                        cedula: responsable.cedula || "",
+                        cargo: responsable.cargo || "",
+                        firma: null
+                      });
+                    } else {
+                      setFirmaSST({ tipo: "SST", nombre: "", cedula: "", cargo: "", firma: null });
+                    }
+                  }}
+                  disabled={cargandoResponsablesSST}
+                  className="w-full px-4 py-2.5 rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-red-400/50 appearance-none cursor-pointer disabled:opacity-50"
+                >
+                  <option value="" className="bg-slate-800">
+                    {cargandoResponsablesSST ? "Cargando..." : "Seleccionar inspector..."}
+                  </option>
+                  {responsablesSST.map((r) => (
+                    <option key={r.id} value={r.nombre} className="bg-slate-800">
+                      {r.nombre}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/40 pointer-events-none" />
+              </div>
             </div>
             <div className="flex items-end">
               <div className="w-full px-4 py-2.5 rounded-lg bg-red-500/20 border border-red-500/30">
@@ -1477,7 +1629,7 @@ export default function InspeccionEquiposPage() {
                     <div className="border-t border-white/10">
                       {equiposArea.map((insp, idx) => {
                         const catConfig = CATEGORIA_CONFIG[insp.equipo.categoria] || CATEGORIA_CONFIG.Extintor;
-                        const isBotiquin = insp.equipo.categoria === "Botiquín";
+                        const isBotiquin = insp.equipo.categoria === "Botiquin";
                         const isExtintor = insp.equipo.categoria === "Extintor";
                         const criterios = getCriteriosForCategoria(insp.equipo.categoria);
 
@@ -2123,32 +2275,35 @@ export default function InspeccionEquiposPage() {
             {/* Firma Responsable SST */}
             <div className="p-4 rounded-lg bg-purple-500/10 border border-purple-500/20">
               <h3 className="text-sm font-semibold text-purple-300 mb-3">Responsable SST</h3>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
-                {/* Dropdown de empleados */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-3">
+                {/* Dropdown de responsables SST */}
                 <div className="relative">
                   <select
                     value={firmaSST.nombre}
                     onChange={(e) => {
-                      const empleado = todosLosEmpleados.find(
-                        (emp) => emp.nombreCompleto === e.target.value
+                      const resp = responsablesSST.find(
+                        (r) => r.nombre === e.target.value
                       );
                       setFirmaSST((prev) => ({
                         ...prev,
                         nombre: e.target.value,
-                        cedula: empleado?.numeroDocumento || "",
-                        cargo: empleado?.cargo || "Responsable SST",
+                        cedula: resp?.cedula || "",
+                        cargo: resp?.cargo || "Responsable SST",
                       }));
                     }}
-                    className="w-full px-3 py-2 text-sm rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/40 focus:outline-none focus:ring-1 focus:ring-purple-400/50 appearance-none cursor-pointer"
+                    disabled={cargandoResponsablesSST}
+                    className="w-full px-3 py-2 text-sm rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/40 focus:outline-none focus:ring-1 focus:ring-purple-400/50 appearance-none cursor-pointer disabled:opacity-50"
                   >
                     <option value="" className="bg-slate-800">
-                      {cargandoEmpleados ? "Cargando..." : "Seleccionar responsable SST"}
+                      {cargandoResponsablesSST ? "Cargando..." : "Seleccionar responsable..."}
                     </option>
-                    {todosLosEmpleados.map((emp) => (
-                      <option key={emp.id} value={emp.nombreCompleto} className="bg-slate-800">
-                        {emp.nombreCompleto}
-                      </option>
-                    ))}
+                    {responsablesSST
+                      .filter((r) => r.nombre !== firmaCOPASST.nombre)
+                      .map((r) => (
+                        <option key={r.id} value={r.nombre} className="bg-slate-800">
+                          {r.nombre}
+                        </option>
+                      ))}
                   </select>
                   <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/40 pointer-events-none" />
                 </div>
@@ -2157,6 +2312,13 @@ export default function InspeccionEquiposPage() {
                   value={firmaSST.cedula}
                   readOnly
                   placeholder="Cédula"
+                  className="px-3 py-2 text-sm rounded-lg bg-white/5 border border-white/10 text-white/70 placeholder-white/40 cursor-not-allowed"
+                />
+                <input
+                  type="text"
+                  value={firmaSST.cargo}
+                  readOnly
+                  placeholder="Cargo"
                   className="px-3 py-2 text-sm rounded-lg bg-white/5 border border-white/10 text-white/70 placeholder-white/40 cursor-not-allowed"
                 />
               </div>
@@ -2185,33 +2347,36 @@ export default function InspeccionEquiposPage() {
 
             {/* Firma COPASST */}
             <div className="p-4 rounded-lg bg-orange-500/10 border border-orange-500/20">
-              <h3 className="text-sm font-semibold text-orange-300 mb-3">Vigía COPASST</h3>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
-                {/* Dropdown de empleados */}
+              <h3 className="text-sm font-semibold text-orange-300 mb-3">Miembro COPASST</h3>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-3">
+                {/* Dropdown de responsables SST */}
                 <div className="relative">
                   <select
                     value={firmaCOPASST.nombre}
                     onChange={(e) => {
-                      const empleado = todosLosEmpleados.find(
-                        (emp) => emp.nombreCompleto === e.target.value
+                      const resp = responsablesSST.find(
+                        (r) => r.nombre === e.target.value
                       );
                       setFirmaCOPASST((prev) => ({
                         ...prev,
                         nombre: e.target.value,
-                        cedula: empleado?.numeroDocumento || "",
-                        cargo: empleado?.cargo || "Vigía COPASST",
+                        cedula: resp?.cedula || "",
+                        cargo: resp?.cargo || "Miembro COPASST",
                       }));
                     }}
-                    className="w-full px-3 py-2 text-sm rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/40 focus:outline-none focus:ring-1 focus:ring-orange-400/50 appearance-none cursor-pointer"
+                    disabled={cargandoResponsablesSST}
+                    className="w-full px-3 py-2 text-sm rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/40 focus:outline-none focus:ring-1 focus:ring-orange-400/50 appearance-none cursor-pointer disabled:opacity-50"
                   >
                     <option value="" className="bg-slate-800">
-                      {cargandoEmpleados ? "Cargando..." : "Seleccionar vigía COPASST"}
+                      {cargandoResponsablesSST ? "Cargando..." : "Seleccionar miembro..."}
                     </option>
-                    {todosLosEmpleados.map((emp) => (
-                      <option key={emp.id} value={emp.nombreCompleto} className="bg-slate-800">
-                        {emp.nombreCompleto}
-                      </option>
-                    ))}
+                    {responsablesSST
+                      .filter((r) => r.nombre !== firmaSST.nombre)
+                      .map((r) => (
+                        <option key={r.id} value={r.nombre} className="bg-slate-800">
+                          {r.nombre}
+                        </option>
+                      ))}
                   </select>
                   <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/40 pointer-events-none" />
                 </div>
@@ -2220,6 +2385,13 @@ export default function InspeccionEquiposPage() {
                   value={firmaCOPASST.cedula}
                   readOnly
                   placeholder="Cédula"
+                  className="px-3 py-2 text-sm rounded-lg bg-white/5 border border-white/10 text-white/70 placeholder-white/40 cursor-not-allowed"
+                />
+                <input
+                  type="text"
+                  value={firmaCOPASST.cargo}
+                  readOnly
+                  placeholder="Cargo"
                   className="px-3 py-2 text-sm rounded-lg bg-white/5 border border-white/10 text-white/70 placeholder-white/40 cursor-not-allowed"
                 />
               </div>
