@@ -16,6 +16,9 @@ import {
   RefreshCw,
   Flame,
   MapPin,
+  FileSpreadsheet,
+  FileText,
+  FileDown,
 } from "lucide-react";
 
 // ══════════════════════════════════════════════════════════
@@ -376,6 +379,12 @@ export default function HistorialInspeccionesEquiposPage() {
   const [expandedEquipos, setExpandedEquipos] = useState<Record<string, boolean>>({});
   const [expandedDetalleEquipos, setExpandedDetalleEquipos] = useState<Record<string, boolean>>({});
 
+  // Exportar
+  const [exporting, setExporting] = useState(false);
+  const [exportingPdf, setExportingPdf] = useState(false);
+  const [exportingId, setExportingId] = useState<string | null>(null);
+  const [exportingPdfId, setExportingPdfId] = useState<string | null>(null);
+
   // Fetch inspecciones
   const fetchInspecciones = useCallback(async () => {
     setLoading(true);
@@ -445,6 +454,138 @@ export default function HistorialInspeccionesEquiposPage() {
   // Contadores
   const totalCompletadas = inspecciones.filter((i) => i.estado === "Completada").length;
 
+  // ── Exportar Excel general ────────────────────────────
+  async function handleExportExcel() {
+    setExporting(true);
+    try {
+      const res = await fetch("/api/inspecciones-equipos/exportar", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.message || "Error al exportar");
+      }
+
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      const disposition = res.headers.get("Content-Disposition");
+      const match = disposition?.match(/filename="(.+?)"/);
+      a.download = match?.[1] || `Inspecciones_Equipos_${new Date().toISOString().split("T")[0]}.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error(err);
+      alert(err instanceof Error ? err.message : "Error al exportar");
+    } finally {
+      setExporting(false);
+    }
+  }
+
+  // ── Exportar PDF general ──────────────────────────────
+  async function handleExportPdf() {
+    setExportingPdf(true);
+    try {
+      const res = await fetch("/api/inspecciones-equipos/exportar-pdf", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.message || "Error al exportar PDF");
+      }
+
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      const disposition = res.headers.get("Content-Disposition");
+      const match = disposition?.match(/filename="(.+?)"/);
+      a.download = match?.[1] || `Inspecciones_Equipos_${new Date().toISOString().split("T")[0]}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error(err);
+      alert(err instanceof Error ? err.message : "Error al exportar PDF");
+    } finally {
+      setExportingPdf(false);
+    }
+  }
+
+  // ── Exportar Excel individual ─────────────────────────
+  async function handleExportIndividual(insp: InspeccionResumen) {
+    setExportingId(insp.id);
+    try {
+      const res = await fetch("/api/inspecciones-equipos/exportar", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ idInspeccion: insp.idInspeccion }),
+      });
+
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.message || "Error al exportar");
+      }
+
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `Inspeccion_Equipos_${insp.idInspeccion}.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error(err);
+      alert(err instanceof Error ? err.message : "Error al exportar");
+    } finally {
+      setExportingId(null);
+    }
+  }
+
+  // ── Exportar PDF individual ───────────────────────────
+  async function handleExportPdfIndividual(insp: InspeccionResumen) {
+    setExportingPdfId(insp.id);
+    try {
+      const res = await fetch("/api/inspecciones-equipos/exportar-pdf", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ idInspeccion: insp.idInspeccion }),
+      });
+
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.message || "Error al exportar PDF");
+      }
+
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `Inspeccion_Equipos_${insp.idInspeccion}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error(err);
+      alert(err instanceof Error ? err.message : "Error al exportar PDF");
+    } finally {
+      setExportingPdfId(null);
+    }
+  }
+
   return (
     <div className="min-h-screen relative">
       {/* Background */}
@@ -485,14 +626,39 @@ export default function HistorialInspeccionesEquiposPage() {
                 </div>
               </div>
             </div>
-            <button
-              onClick={fetchInspecciones}
-              disabled={loading}
-              className="flex items-center gap-2 rounded-full bg-white/10 border border-white/20 px-4 py-2 text-sm font-semibold text-white/80 hover:bg-white/20 hover:border-white/30 transition-all cursor-pointer disabled:opacity-50"
-            >
-              <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
-              <span className="hidden sm:inline">Actualizar</span>
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleExportExcel}
+                disabled={exporting || loading || inspecciones.length === 0}
+                className="flex items-center gap-2 px-3 py-2 rounded-lg bg-green-500/15 border border-green-400/25 text-green-300 text-sm font-semibold hover:bg-green-500/25 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                {exporting ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <FileSpreadsheet className="w-4 h-4" />
+                )}
+                <span className="hidden sm:inline">{exporting ? "Exportando..." : "Excel"}</span>
+              </button>
+              <button
+                onClick={handleExportPdf}
+                disabled={exportingPdf || loading || inspecciones.length === 0}
+                className="flex items-center gap-2 px-3 py-2 rounded-lg bg-red-500/15 border border-red-400/25 text-red-300 text-sm font-semibold hover:bg-red-500/25 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                {exportingPdf ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <FileText className="w-4 h-4" />
+                )}
+                <span className="hidden sm:inline">{exportingPdf ? "Exportando..." : "PDF"}</span>
+              </button>
+              <button
+                onClick={fetchInspecciones}
+                disabled={loading}
+                className="flex items-center gap-2 px-3 py-2 rounded-lg bg-white/10 border border-white/15 text-white/60 text-sm hover:bg-white/20 transition-all cursor-pointer disabled:opacity-40"
+              >
+                <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
+              </button>
+            </div>
           </div>
         </div>
       </header>
@@ -584,8 +750,11 @@ export default function HistorialInspeccionesEquiposPage() {
                   className="bg-white/10 backdrop-blur-xl rounded-2xl border border-white/10 overflow-hidden"
                 >
                   {/* Row principal */}
-                  <button
+                  <div
+                    role="button"
+                    tabIndex={0}
                     onClick={() => toggleExpand(insp.id)}
+                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleExpand(insp.id); } }}
                     className="w-full flex items-center gap-4 p-4 hover:bg-white/5 transition-colors cursor-pointer text-left"
                   >
                     <div className={`w-10 h-10 rounded-lg ${estilo.bg} border ${estilo.border} flex items-center justify-center shrink-0`}>
@@ -607,12 +776,47 @@ export default function HistorialInspeccionesEquiposPage() {
                         <span>Inspector: {insp.inspector || "—"}</span>
                       </div>
                     </div>
-                    {isExpanded ? (
-                      <ChevronUp className="w-5 h-5 text-white/40 shrink-0" />
-                    ) : (
-                      <ChevronDown className="w-5 h-5 text-white/40 shrink-0" />
-                    )}
-                  </button>
+                    {/* Botones de exportación individual */}
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleExportIndividual(insp);
+                        }}
+                        disabled={exportingId === insp.id}
+                        className="p-1.5 rounded-lg bg-green-500/15 border border-green-400/25 text-green-400 hover:bg-green-500/25 transition-all disabled:opacity-50 cursor-pointer"
+                        title="Exportar Excel"
+                      >
+                        {exportingId === insp.id ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                          <FileDown className="w-4 h-4" />
+                        )}
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleExportPdfIndividual(insp);
+                        }}
+                        disabled={exportingPdfId === insp.id}
+                        className="p-1.5 rounded-lg bg-red-500/15 border border-red-400/25 text-red-400 hover:bg-red-500/25 transition-all disabled:opacity-50 cursor-pointer"
+                        title="Exportar PDF"
+                      >
+                        {exportingPdfId === insp.id ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                          <FileText className="w-4 h-4" />
+                        )}
+                      </button>
+                      <div className={`p-1.5 rounded-lg ${isExpanded ? "bg-red-500/20" : "bg-white/10"} transition-all`}>
+                        {isExpanded ? (
+                          <ChevronUp className="w-4 h-4 text-red-400" />
+                        ) : (
+                          <ChevronDown className="w-4 h-4 text-white/40" />
+                        )}
+                      </div>
+                    </div>
+                  </div>
 
                   {/* Detalle expandido */}
                   {isExpanded && (
