@@ -87,8 +87,97 @@ const CONDICION_STYLES: Record<string, { bg: string; text: string; label: string
 const CATEGORIA_CONFIG: Record<string, { color: string; bgColor: string; icon: string }> = {
   Extintor:        { color: "text-red-400",    bgColor: "bg-red-500/20",    icon: "🧯" },
   Botiquín:        { color: "text-green-400",  bgColor: "bg-green-500/20",  icon: "🩹" },
+  Botiquin:        { color: "text-green-400",  bgColor: "bg-green-500/20",  icon: "🩹" },
   Camilla:         { color: "text-blue-400",   bgColor: "bg-blue-500/20",   icon: "🛏️" },
   "Kit Derrames":  { color: "text-yellow-400", bgColor: "bg-yellow-500/20", icon: "⚠️" },
+};
+
+// Etiquetas de estado detallado
+const ESTADO_DETALLADO: Record<string, { label: string; color: string }> = {
+  B:  { label: "Bueno", color: "text-green-400" },
+  R:  { label: "Regular", color: "text-yellow-400" },
+  M:  { label: "Malo", color: "text-red-400" },
+  NT: { label: "No Tiene", color: "text-white/40" },
+};
+
+// Parser para extraer datos detallados de observaciones
+interface DatosDetallados {
+  criteriosExtintor?: Record<string, { estado: string }>;
+  infoExtintor?: { claseAgente: string; tipoExtintor: string; capacidad: string; fechaProximaRecarga: string };
+  elementosBotiquin?: Record<string, { estado: string; cantidad: string; fechaVencimiento: string }>;
+  elementosKit?: Record<string, { estado: string; cantidad: string; fechaVencimiento: string }>;
+  verificacionesKit?: Record<string, { respuesta: boolean }>;
+  elementosCamilla?: Record<string, { estado: string }>;
+}
+
+function parseDatosDetallados(obs: string): { textoLimpio: string; datos: DatosDetallados | null } {
+  const separador = "---DATOS_DETALLADOS---";
+  const idx = obs.indexOf(separador);
+  if (idx === -1) return { textoLimpio: obs, datos: null };
+  const textoLimpio = obs.substring(0, idx).trim();
+  const jsonStr = obs.substring(idx + separador.length).trim();
+  try {
+    const datos = JSON.parse(jsonStr) as DatosDetallados;
+    return { textoLimpio, datos };
+  } catch {
+    return { textoLimpio, datos: null };
+  }
+}
+
+// Nombres legibles para criterios de extintor
+const CRITERIOS_EXTINTOR_NOMBRES: Record<string, string> = {
+  presion: "Presión",
+  selloGarantia: "Sello de Garantía",
+  manometro: "Manómetro",
+  estadoCilindro: "Estado del Cilindro",
+  manija: "Manija",
+  boquillaManguera: "Boquilla o Manguera",
+  anilloSeguridad: "Anillo de Seguridad",
+  pinSeguridad: "Pin de Seguridad",
+  pintura: "Pintura",
+  tarjetaInspeccion: "Tarjeta de Inspección",
+};
+
+// Nombres legibles para elementos de botiquín
+const ELEMENTOS_BOTIQUIN_NOMBRES: Record<string, string> = {
+  gasas: "Gasas", esparadrapo: "Esparadrapo", bajalenguas: "Bajalenguas",
+  guantesLatex: "Guantes de Latex", aplicadores: "Aplicadores",
+  vendaElastica2x5: "Venda elástica 2X5", vendaElastica3x5: "Venda elástica 3X5",
+  vendaElastica5x5: "Venda elástica 5X5", vendaAlgodon3x5: "Venda algodón 3X5",
+  vendaAlgodon5x5: "Venda algodón 5X5", yodopovidona: "Yodopovidona",
+  solucionSalina: "Solución salina", tapabocas: "Tapabocas",
+  alcoholAntiseptico: "Alcohol antiséptico", curas: "Curas",
+  jeringa5ml: "Jeringa 5ml", tijerasTrauma: "Tijeras de Trauma",
+  parcheOcular: "Parche Ocular", termometro: "Termómetro",
+  libreta: "Libreta", lapicero: "Lapicero", manualEmergencia: "Manual de Emergencia",
+};
+
+// Nombres legibles para elementos de kit de derrames
+const ELEMENTOS_KIT_NOMBRES: Record<string, string> = {
+  panosAbsorventes: "Paños Absorbentes", barreraAbsorvente: "Barrera Absorbente",
+  trajeDesechable: "Traje Desechable", bolsaRoja: "Bolsa Roja",
+  palaPlastica: "Pala Plástica", espatulaPlastica: "Espátula Plástica",
+  guantesNitrilo: "Guantes de Nitrilo", gafasSeguridad: "Gafas de Seguridad",
+  cintaPeligro: "Cinta de Peligro", martilloGoma: "Martillo de Goma",
+  recogedorMano: "Recogedor de Mano", respiradorN95: "Respirador N-95",
+  linternaRecargable: "Linterna Recargable", bolsaGranulado: "Granulado Absorbente",
+  masillaEpoxica: "Masilla Epóxica", desengrasante: "Desengrasante Biodegradable",
+  chalecoReflectivo: "Chaleco Reflectivo", conos: "Conos",
+};
+
+// Nombres legibles para elementos de camilla
+const ELEMENTOS_CAMILLA_NOMBRES: Record<string, string> = {
+  estadoPasta: "Estado de la Pasta", correasSeguridad: "Correas de Seguridad",
+  sujetadoresCargue: "Sujetadores para Cargue", crucetasSeguridad: "Crucetas de Seguridad",
+  inmovilizadorSuperior: "Inmovilizador Superior", inmovilizadorInferior: "Inmovilizador Inferior",
+  estadoGeneralCamilla: "Estado General de la Camilla",
+};
+
+// Verificaciones del kit de derrames
+const VERIFICACIONES_KIT_NOMBRES: Record<string, string> = {
+  conoceProcedimiento: "¿El responsable conoce el procedimiento?",
+  lugarAdecuado: "¿Almacenado en lugar seco y protegido?",
+  rotulado: "¿Kit rotulado o señalizado?",
 };
 
 // Helpers
@@ -131,6 +220,13 @@ function getCriteriosVisibles(categoria: string) {
         { key: "estadoContenedor", label: "Contenedor" }
       );
       break;
+    case "Botiquin":
+    case "Botiquín":
+      criterios.push(
+        { key: "completitudElementos", label: "Completitud" },
+        { key: "estadoContenedor", label: "Contenedor" }
+      );
+      break;
     case "Camilla":
       criterios.push(
         { key: "estructura", label: "Estructura" },
@@ -139,6 +235,124 @@ function getCriteriosVisibles(categoria: string) {
       break;
   }
   return criterios;
+}
+
+// Componente para renderizar datos detallados
+function DetalleExtendido({ datos, categoria }: { datos: DatosDetallados; categoria: string }) {
+  if (categoria === "Extintor" && datos.criteriosExtintor) {
+    const criterios = datos.criteriosExtintor;
+    return (
+      <div className="mt-2 space-y-2">
+        {datos.infoExtintor && (
+          <div className="flex flex-wrap gap-2 text-[10px]">
+            <span className="px-2 py-0.5 rounded bg-red-500/10 text-red-300/80">
+              Tipo: {datos.infoExtintor.tipoExtintor}
+            </span>
+            <span className="px-2 py-0.5 rounded bg-red-500/10 text-red-300/80">
+              Agente: {datos.infoExtintor.claseAgente}
+            </span>
+            <span className="px-2 py-0.5 rounded bg-red-500/10 text-red-300/80">
+              Capacidad: {datos.infoExtintor.capacidad}
+            </span>
+            {datos.infoExtintor.fechaProximaRecarga && (
+              <span className="px-2 py-0.5 rounded bg-red-500/10 text-red-300/80">
+                Próx. recarga: {formatFecha(datos.infoExtintor.fechaProximaRecarga)}
+              </span>
+            )}
+          </div>
+        )}
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-1">
+          {Object.entries(criterios).map(([key, val]) => {
+            const est = ESTADO_DETALLADO[val.estado] || { label: val.estado, color: "text-white/40" };
+            return (
+              <div key={key} className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-white/5 text-[10px]">
+                <span className="text-white/40 truncate">{CRITERIOS_EXTINTOR_NOMBRES[key] || key}:</span>
+                <span className={`font-semibold ${est.color}`}>{est.label}</span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
+
+  if ((categoria === "Botiquin" || categoria === "Botiquín") && datos.elementosBotiquin) {
+    const elementos = datos.elementosBotiquin;
+    return (
+      <div className="mt-2">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-0.5">
+          {Object.entries(elementos).map(([key, val]) => {
+            const est = ESTADO_DETALLADO[val.estado] || { label: val.estado, color: "text-white/40" };
+            return (
+              <div key={key} className="flex items-center justify-between gap-1 px-2 py-0.5 rounded bg-white/5 text-[10px]">
+                <span className="text-white/50 truncate">{ELEMENTOS_BOTIQUIN_NOMBRES[key] || key}</span>
+                <div className="flex items-center gap-2 shrink-0">
+                  <span className="text-white/30">×{val.cantidad}</span>
+                  <span className={`font-semibold ${est.color}`}>{est.label}</span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
+
+  if (categoria === "Kit Derrames" && (datos.elementosKit || datos.verificacionesKit)) {
+    return (
+      <div className="mt-2 space-y-2">
+        {datos.elementosKit && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-0.5">
+            {Object.entries(datos.elementosKit).map(([key, val]) => {
+              const est = ESTADO_DETALLADO[val.estado] || { label: val.estado, color: "text-white/40" };
+              return (
+                <div key={key} className="flex items-center justify-between gap-1 px-2 py-0.5 rounded bg-white/5 text-[10px]">
+                  <span className="text-white/50 truncate">{ELEMENTOS_KIT_NOMBRES[key] || key}</span>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <span className="text-white/30">×{val.cantidad}</span>
+                    <span className={`font-semibold ${est.color}`}>{est.label}</span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+        {datos.verificacionesKit && (
+          <div className="space-y-0.5">
+            {Object.entries(datos.verificacionesKit).map(([key, val]) => (
+              <div key={key} className="flex items-center gap-2 px-2 py-0.5 rounded bg-white/5 text-[10px]">
+                <span className={`font-semibold ${val.respuesta ? "text-green-400" : "text-red-400"}`}>
+                  {val.respuesta ? "✓" : "✗"}
+                </span>
+                <span className="text-white/50">{VERIFICACIONES_KIT_NOMBRES[key] || key}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  if (categoria === "Camilla" && datos.elementosCamilla) {
+    const elementos = datos.elementosCamilla;
+    return (
+      <div className="mt-2">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-1">
+          {Object.entries(elementos).map(([key, val]) => {
+            const est = ESTADO_DETALLADO[val.estado] || { label: val.estado, color: "text-white/40" };
+            return (
+              <div key={key} className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-white/5 text-[10px]">
+                <span className="text-white/40 truncate">{ELEMENTOS_CAMILLA_NOMBRES[key] || key}:</span>
+                <span className={`font-semibold ${est.color}`}>{est.label}</span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
+
+  return null;
 }
 
 // ══════════════════════════════════════════════════════════
@@ -156,6 +370,11 @@ export default function HistorialInspeccionesEquiposPage() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [detallesCargados, setDetallesCargados] = useState<Record<string, DetalleEquipo[]>>({});
   const [loadingDetalle, setLoadingDetalle] = useState<string | null>(null);
+
+  // Agrupación colapsable: áreas y equipos individuales
+  const [collapsedAreas, setCollapsedAreas] = useState<Record<string, boolean>>({});
+  const [expandedEquipos, setExpandedEquipos] = useState<Record<string, boolean>>({});
+  const [expandedDetalleEquipos, setExpandedDetalleEquipos] = useState<Record<string, boolean>>({});
 
   // Fetch inspecciones
   const fetchInspecciones = useCallback(async () => {
@@ -408,7 +627,36 @@ export default function HistorialInspeccionesEquiposPage() {
                         </div>
                       ) : (
                         <div className="p-4 space-y-3">
-                          {/* Agrupar por área */}
+                          {/* Resumen rápido por categoría */}
+                          {(() => {
+                            const porCategoria = detalles.reduce((acc, det) => {
+                              const cat = det.categoria || "Otro";
+                              if (!acc[cat]) acc[cat] = { total: 0, buenos: 0, malos: 0 };
+                              acc[cat].total++;
+                              if (det.estadoGeneral === "Bueno") acc[cat].buenos++;
+                              if (det.estadoGeneral === "Malo") acc[cat].malos++;
+                              return acc;
+                            }, {} as Record<string, { total: number; buenos: number; malos: number }>);
+
+                            return (
+                              <div className="flex flex-wrap gap-2 mb-1">
+                                <span className="text-[10px] text-white/40 self-center">Resumen:</span>
+                                {Object.entries(porCategoria).map(([cat, stats]) => {
+                                  const cfg = CATEGORIA_CONFIG[cat] || CATEGORIA_CONFIG.Extintor;
+                                  return (
+                                    <span key={cat} className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-lg ${cfg.bgColor} text-[10px]`}>
+                                      <span>{cfg.icon}</span>
+                                      <span className={`font-semibold ${cfg.color}`}>{stats.total} {cat}</span>
+                                      {stats.buenos > 0 && <span className="text-green-400">✓{stats.buenos}</span>}
+                                      {stats.malos > 0 && <span className="text-red-400">✗{stats.malos}</span>}
+                                    </span>
+                                  );
+                                })}
+                              </div>
+                            );
+                          })()}
+
+                          {/* Agrupar por área — colapsable */}
                           {Object.entries(
                             detalles.reduce(
                               (acc, det) => {
@@ -421,88 +669,150 @@ export default function HistorialInspeccionesEquiposPage() {
                             )
                           )
                             .sort(([a], [b]) => a.localeCompare(b))
-                            .map(([area, equiposArea]) => (
+                            .map(([area, equiposArea]) => {
+                              const areaKey = `${insp.id}-${area}`;
+                              const isAreaCollapsed = collapsedAreas[areaKey] === true;
+                              // Resumen de estados por área
+                              const areaBuenos = equiposArea.filter(e => e.estadoGeneral === "Bueno").length;
+                              const areaMalos = equiposArea.filter(e => e.estadoGeneral === "Malo").length;
+
+                              return (
                               <div
                                 key={area}
                                 className="rounded-xl bg-white/5 border border-white/10 overflow-hidden"
                               >
-                                <div className="flex items-center gap-2 px-4 py-2 bg-white/5">
-                                  <MapPin className="w-4 h-4 text-white/50" />
-                                  <span className="text-sm font-semibold text-white/80">
+                                <button
+                                  onClick={() => setCollapsedAreas(prev => ({ ...prev, [areaKey]: !prev[areaKey] }))}
+                                  className="w-full flex items-center gap-2 px-4 py-2.5 bg-white/5 hover:bg-white/8 transition-colors cursor-pointer text-left"
+                                >
+                                  <MapPin className="w-4 h-4 text-white/50 shrink-0" />
+                                  <span className="text-sm font-semibold text-white/80 flex-1">
                                     {area}
                                   </span>
                                   <span className="text-xs text-white/40">
-                                    ({equiposArea.length})
+                                    {equiposArea.length} equipo{equiposArea.length > 1 ? "s" : ""}
                                   </span>
-                                </div>
+                                  {areaBuenos > 0 && (
+                                    <span className="text-[10px] text-green-400 bg-green-500/15 px-1.5 py-0.5 rounded">✓{areaBuenos}</span>
+                                  )}
+                                  {areaMalos > 0 && (
+                                    <span className="text-[10px] text-red-400 bg-red-500/15 px-1.5 py-0.5 rounded">✗{areaMalos}</span>
+                                  )}
+                                  {isAreaCollapsed ? (
+                                    <ChevronDown className="w-4 h-4 text-white/30 shrink-0" />
+                                  ) : (
+                                    <ChevronUp className="w-4 h-4 text-white/30 shrink-0" />
+                                  )}
+                                </button>
 
+                                {!isAreaCollapsed && (
                                 <div className="divide-y divide-white/5">
                                   {equiposArea.map((det) => {
                                     const catCfg =
                                       CATEGORIA_CONFIG[det.categoria] || CATEGORIA_CONFIG.Extintor;
                                     const criterios = getCriteriosVisibles(det.categoria);
+                                    const { textoLimpio, datos } = parseDatosDetallados(det.observaciones);
+                                    const equipoKey = `${insp.id}-${det.id}`;
+                                    const isEquipoExpanded = expandedEquipos[equipoKey] === true;
+                                    const detalleKey = `${insp.id}-${det.id}-det`;
+                                    const isDetalleExpanded = expandedDetalleEquipos[detalleKey] === true;
+
+                                    // Estado resumen rápido
+                                    const estadoStyle = det.estadoGeneral
+                                      ? CONDICION_STYLES[det.estadoGeneral] || { bg: "bg-white/5", text: "text-white/30", label: det.estadoGeneral }
+                                      : { bg: "bg-white/5", text: "text-white/20", label: "—" };
 
                                     return (
-                                      <div key={det.id} className="px-4 py-3">
-                                        <div className="flex items-center gap-2 mb-2">
-                                          <span className="text-sm">{catCfg.icon}</span>
-                                          <span className="text-sm font-medium text-white">
+                                      <div key={det.id} className="px-4 py-2">
+                                        {/* Fila resumen del equipo — siempre visible, clickeable */}
+                                        <button
+                                          onClick={() => setExpandedEquipos(prev => ({ ...prev, [equipoKey]: !prev[equipoKey] }))}
+                                          className="w-full flex items-center gap-2 text-left cursor-pointer hover:opacity-80 transition-opacity py-0.5"
+                                        >
+                                          <span className="text-sm shrink-0">{catCfg.icon}</span>
+                                          <span className="text-xs font-medium text-white truncate flex-1">
                                             {det.equipoNombre || det.equipoCodigo || det.idDetalle}
                                           </span>
-                                          <span
-                                            className={`px-1.5 py-0.5 rounded text-[9px] font-semibold ${catCfg.bgColor} ${catCfg.color}`}
-                                          >
+                                          <span className={`px-1.5 py-0.5 rounded text-[9px] font-semibold ${catCfg.bgColor} ${catCfg.color} shrink-0`}>
                                             {det.categoria}
                                           </span>
+                                          <span className={`px-1.5 py-0.5 rounded text-[9px] font-semibold ${estadoStyle.bg} ${estadoStyle.text} shrink-0`}>
+                                            {estadoStyle.label}
+                                          </span>
                                           {det.fechaVencimiento && (
-                                            <span className="text-[10px] text-white/40">
+                                            <span className="text-[9px] text-white/30 shrink-0 hidden sm:inline">
                                               Vence: {formatFecha(det.fechaVencimiento)}
                                             </span>
                                           )}
-                                        </div>
+                                          {isEquipoExpanded ? (
+                                            <ChevronUp className="w-3.5 h-3.5 text-white/25 shrink-0" />
+                                          ) : (
+                                            <ChevronDown className="w-3.5 h-3.5 text-white/25 shrink-0" />
+                                          )}
+                                        </button>
 
-                                        <div className="flex flex-wrap gap-1.5 mb-1">
-                                          {criterios.map((c) => {
-                                            const val =
-                                              det[c.key as keyof DetalleEquipo] as string | null;
-                                            const style = val
-                                              ? CONDICION_STYLES[val] || {
-                                                  bg: "bg-white/5",
-                                                  text: "text-white/30",
-                                                  label: val,
-                                                }
-                                              : {
-                                                  bg: "bg-white/5",
-                                                  text: "text-white/20",
-                                                  label: "—",
-                                                };
+                                        {/* Detalle expandido del equipo */}
+                                        {isEquipoExpanded && (
+                                          <div className="mt-2 ml-6 space-y-2">
+                                            {/* Criterios generales en pills */}
+                                            <div className="flex flex-wrap gap-1.5">
+                                              {criterios.map((c) => {
+                                                const val = det[c.key as keyof DetalleEquipo] as string | null;
+                                                const style = val
+                                                  ? CONDICION_STYLES[val] || { bg: "bg-white/5", text: "text-white/30", label: val }
+                                                  : { bg: "bg-white/5", text: "text-white/20", label: "—" };
 
-                                            return (
-                                              <span
-                                                key={c.key}
-                                                className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] ${style.bg}`}
-                                                title={c.label}
-                                              >
-                                                <span className="text-white/40">{c.label}:</span>
-                                                <span className={`font-semibold ${style.text}`}>
-                                                  {style.label}
-                                                </span>
-                                              </span>
-                                            );
-                                          })}
-                                        </div>
+                                                return (
+                                                  <span
+                                                    key={c.key}
+                                                    className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] ${style.bg}`}
+                                                    title={c.label}
+                                                  >
+                                                    <span className="text-white/40">{c.label}:</span>
+                                                    <span className={`font-semibold ${style.text}`}>{style.label}</span>
+                                                  </span>
+                                                );
+                                              })}
+                                            </div>
 
-                                        {det.observaciones && (
-                                          <p className="text-[10px] text-white/40 mt-1">
-                                            📝 {det.observaciones}
-                                          </p>
+                                            {/* Botón para ver detalle extendido */}
+                                            {datos && (
+                                              <div>
+                                                <button
+                                                  onClick={() => setExpandedDetalleEquipos(prev => ({ ...prev, [detalleKey]: !prev[detalleKey] }))}
+                                                  className="inline-flex items-center gap-1 text-[10px] text-white/40 hover:text-white/60 transition-colors cursor-pointer"
+                                                >
+                                                  {isDetalleExpanded ? (
+                                                    <ChevronUp className="w-3 h-3" />
+                                                  ) : (
+                                                    <ChevronDown className="w-3 h-3" />
+                                                  )}
+                                                  <span>
+                                                    {isDetalleExpanded ? "Ocultar" : "Ver"} detalle de inspección
+                                                  </span>
+                                                </button>
+                                                {isDetalleExpanded && (
+                                                  <DetalleExtendido datos={datos} categoria={det.categoria} />
+                                                )}
+                                              </div>
+                                            )}
+
+                                            {/* Observaciones */}
+                                            {textoLimpio && (
+                                              <p className="text-[10px] text-white/40">
+                                                📝 {textoLimpio}
+                                              </p>
+                                            )}
+                                          </div>
                                         )}
                                       </div>
                                     );
                                   })}
                                 </div>
+                                )}
                               </div>
-                            ))}
+                              );
+                            })}
                         </div>
                       )}
                     </div>
