@@ -23,8 +23,15 @@ import {
   ChevronUp,
   FileText,
   Package,
-  Zap,
   ClipboardList,
+  Link2,
+  Copy,
+  ExternalLink,
+  Pencil,
+  Plus,
+  Trash2,
+  RefreshCw,
+  Clock,
 } from "lucide-react";
 import { useSession } from "@/presentation/context/SessionContext";
 
@@ -638,6 +645,35 @@ export default function InspeccionEquiposPage() {
   const [firmasAreas, setFirmasAreas] = useState<FirmaArea[]>([]);
   const [firmandoArea, setFirmandoArea] = useState<string | null>(null);
 
+  // Estado para rastrear áreas guardadas y guardando
+  const [areasGuardadas, setAreasGuardadas] = useState<Set<string>>(new Set());
+  const [guardandoArea, setGuardandoArea] = useState<string | null>(null);
+
+  // Estados para enlaces de firma remota
+  const [enlacesFirma, setEnlacesFirma] = useState<Record<string, string>>({});
+  const [generandoEnlace, setGenerandoEnlace] = useState<string | null>(null);
+  const [enlaceCopiado, setEnlaceCopiado] = useState<string | null>(null);
+  const [verificandoFirma, setVerificandoFirma] = useState<string | null>(null);
+  const [firmasRemotas, setFirmasRemotas] = useState<Record<string, boolean>>({}); // área -> firmado
+
+  // Estados para modal de edición/creación de equipos
+  const [modalEquipoAbierto, setModalEquipoAbierto] = useState(false);
+  const [equipoEditando, setEquipoEditando] = useState<EquipoItem | null>(null);
+  const [guardandoEquipo, setGuardandoEquipo] = useState(false);
+  const [areaParaNuevoEquipo, setAreaParaNuevoEquipo] = useState<string | null>(null);
+  const [formEquipo, setFormEquipo] = useState<Partial<EquipoItem>>({
+    codigo: "",
+    nombre: "",
+    categoria: "Extintor",
+    tipoEspecifico: "",
+    area: "",
+    ubicacion: "",
+    capacidad: "",
+    fechaVencimiento: null,
+    estado: "Activo",
+    descripcion: "",
+  });
+
   // Firmas globales (Responsable SST y COPASST)
   const [firmaSST, setFirmaSST] = useState<FirmaGlobal>({
     tipo: "SST",
@@ -1019,93 +1055,6 @@ export default function InspeccionEquiposPage() {
     setFirmandoGlobal(null);
   };
 
-  // Llenar datos de prueba
-  const llenarDatosPrueba = () => {
-    setInspecciones((prev) =>
-      prev.map((i) => {
-        if (i.equipo.categoria === "Botiquin") {
-          // Llenar elementos de botiquín
-          const elementosLlenos: Record<string, ElementoBotiquinInspeccion> = {};
-          ELEMENTOS_BOTIQUIN.forEach((el) => {
-            elementosLlenos[el.id] = {
-              estado: "B",
-              cantidad: String(el.unidadRequerida),
-              fechaVencimiento: "2027-12-31",
-            };
-          });
-          return {
-            ...i,
-            criteriosComunes: { estadoGeneral: "Bueno", senalizacion: "Bueno", accesibilidad: "Bueno" },
-            elementosBotiquin: elementosLlenos,
-            observaciones: "Inspección de prueba - Botiquín completo",
-          };
-        }
-        if (i.equipo.categoria === "Extintor") {
-          // Llenar criterios detallados de extintor
-          const criteriosLlenos: Record<string, CriterioExtintorInspeccion> = {};
-          CRITERIOS_EXTINTOR_DETALLE.forEach((c) => {
-            criteriosLlenos[c.id] = { estado: "B" };
-          });
-          return {
-            ...i,
-            criteriosComunes: { estadoGeneral: "Bueno", senalizacion: "Bueno", accesibilidad: "Bueno" },
-            criteriosExtintorDetalle: criteriosLlenos,
-            infoExtintor: {
-              claseAgente: "ABC",
-              tipoExtintor: "Polvo Químico Seco",
-              capacidad: i.equipo.capacidad || "10 Lb",
-              fechaProximaRecarga: "2027-06-01",
-            },
-            observaciones: "Inspección de prueba - Extintor en buen estado",
-          };
-        }
-        if (i.equipo.categoria === "Kit Derrames") {
-          // Llenar elementos del kit de derrames
-          const elementosLlenos: Record<string, ElementoKitInspeccion> = {};
-          ELEMENTOS_KIT_DERRAMES.forEach((el) => {
-            elementosLlenos[el.id] = {
-              estado: "B",
-              cantidad: String(el.unidadRequerida),
-              fechaVencimiento: "2027-12-31",
-            };
-          });
-          // Llenar verificaciones
-          const verificacionesLlenas: Record<string, VerificacionKitInspeccion> = {};
-          VERIFICACIONES_KIT.forEach((v) => {
-            verificacionesLlenas[v.id] = { respuesta: true };
-          });
-          return {
-            ...i,
-            criteriosComunes: { estadoGeneral: "Bueno", senalizacion: "Bueno", accesibilidad: "Bueno" },
-            elementosKit: elementosLlenos,
-            verificacionesKit: verificacionesLlenas,
-            observaciones: "Inspección de prueba - Kit de derrames completo",
-          };
-        }
-        if (i.equipo.categoria === "Camilla") {
-          // Llenar elementos de camilla
-          const elementosLlenos: Record<string, ElementoCamillaInspeccion> = {};
-          ELEMENTOS_CAMILLA.forEach((el) => {
-            elementosLlenos[el.id] = { estado: "B" };
-          });
-          return {
-            ...i,
-            criteriosComunes: { estadoGeneral: "Bueno", senalizacion: "Bueno", accesibilidad: "Bueno" },
-            elementosCamilla: elementosLlenos,
-            observaciones: "Inspección de prueba - Camilla en buen estado",
-          };
-        }
-        return {
-          ...i,
-          criteriosComunes: { estadoGeneral: "Bueno", senalizacion: "Bueno", accesibilidad: "Bueno" },
-          criteriosExtintor: { presionManometro: "Bueno", manguera: "Bueno", pinSeguridad: "Bueno", soporteBase: "Bueno" },
-          criteriosCamilla: { estructura: "Bueno", correasArnes: "Bueno" },
-          observaciones: "Inspección de prueba - Equipo en buen estado",
-        };
-      })
-    );
-  };
-
   // Verificar si un equipo está completamente inspeccionado
   const equipoInspeccionado = (insp: InspeccionEquipo): boolean => {
     if (insp.equipo.categoria === "Botiquin") {
@@ -1147,6 +1096,609 @@ export default function InspeccionEquiposPage() {
     firmasAreas.length > 0 && 
     firmaSST.firma !== null && 
     firmaCOPASST.firma !== null;
+
+  // Estadísticas por área
+  const getEstadisticasArea = (area: string) => {
+    const equiposArea = inspecciones.filter((i) => i.equipo.area === area);
+    const equiposInspeccionadosArea = equiposArea.filter(equipoInspeccionado).length;
+    const firmaArea = firmasAreas.find((f) => f.area === area);
+    const firmaCompleta = firmaArea?.firma !== null && firmaArea?.nombre.trim() !== "";
+    const todosInspeccionadosArea = equiposInspeccionadosArea === equiposArea.length && equiposArea.length > 0;
+    const areaYaGuardada = areasGuardadas.has(area);
+    
+    return {
+      total: equiposArea.length,
+      inspeccionados: equiposInspeccionadosArea,
+      todosInspeccionados: todosInspeccionadosArea,
+      firmaCompleta,
+      puedeGuardar: todosInspeccionadosArea && firmaCompleta && !areaYaGuardada,
+      yaGuardada: areaYaGuardada,
+    };
+  };
+
+  // Guardar inspección por área específica
+  const guardarInspeccionPorArea = async (area: string) => {
+    // Validar firmas SST y COPASST obligatorias
+    const firmasFaltantes: string[] = [];
+    if (!firmaSST.firma) firmasFaltantes.push("Responsable SST");
+    if (!firmaCOPASST.firma) firmasFaltantes.push("Miembro COPASST");
+    
+    if (firmasFaltantes.length > 0) {
+      setErrorMessage(`Antes de guardar debe completar las firmas de: ${firmasFaltantes.join(" y ")}.`);
+      return;
+    }
+
+    const stats = getEstadisticasArea(area);
+    
+    if (!stats.todosInspeccionados) {
+      setErrorMessage(`Debe inspeccionar todos los equipos del área "${area}". Faltan ${stats.total - stats.inspeccionados} equipos.`);
+      return;
+    }
+
+    if (!stats.firmaCompleta) {
+      setErrorMessage(`Falta la firma del responsable del área "${area}".`);
+      return;
+    }
+
+    if (stats.yaGuardada) {
+      setErrorMessage(`El área "${area}" ya fue guardada.`);
+      return;
+    }
+
+    setGuardandoArea(area);
+    setErrorMessage(null);
+
+    try {
+      // Helper para convertir estados detallados (B/R/M/NT) a estados simples (Bueno/Malo/NA)
+      const mapEstadoDetallado = (estado: string | null | undefined): "Bueno" | "Malo" | "NA" | null => {
+        if (estado === null || estado === undefined) return null;
+        if (estado === "B") return "Bueno";
+        if (estado === "R" || estado === "M") return "Malo";
+        if (estado === "NT") return "NA";
+        return null;
+      };
+
+      // Helper para calcular estado general de elementos
+      const calcularEstadoGeneral = (
+        elementos: Record<string, { estado: string | null }> | null | undefined
+      ): "Bueno" | "Malo" | "NA" => {
+        if (!elementos) return "NA";
+        const estados = Object.values(elementos).map((e) => e.estado).filter(Boolean);
+        if (estados.length === 0) return "NA";
+        const malos = estados.filter((e) => e === "M" || e === "R").length;
+        if (malos > 0) return "Malo";
+        return "Bueno";
+      };
+
+      // Helper para calcular estado general de criterios de extintor
+      const calcularEstadoExtintor = (
+        criterios: Record<string, { estado: string | null }> | null | undefined
+      ): "Bueno" | "Malo" | "NA" => {
+        if (!criterios) return "NA";
+        const estados = Object.values(criterios).map((c) => c.estado).filter(Boolean);
+        if (estados.length === 0) return "NA";
+        const malos = estados.filter((e) => e === "M" || e === "R").length;
+        if (malos > 0) return "Malo";
+        return "Bueno";
+      };
+
+      // Filtrar solo equipos del área
+      const inspeccionesArea = inspecciones.filter((i) => i.equipo.area === area);
+      
+      const detalles = inspeccionesArea.map((i) => {
+        const isExtintor = i.equipo.categoria === "Extintor";
+        const isBotiquin = i.equipo.categoria === "Botiquin";
+        const isCamilla = i.equipo.categoria === "Camilla";
+        const isKit = i.equipo.categoria === "Kit Derrames";
+
+        let estadoGeneral = i.criteriosComunes.estadoGeneral;
+        let senalizacion = i.criteriosComunes.senalizacion;
+        let accesibilidad = i.criteriosComunes.accesibilidad;
+
+        if (isExtintor && !estadoGeneral) {
+          estadoGeneral = calcularEstadoExtintor(i.criteriosExtintorDetalle);
+          senalizacion = senalizacion || "Bueno";
+          accesibilidad = accesibilidad || "Bueno";
+        } else if (isBotiquin && !estadoGeneral) {
+          estadoGeneral = calcularEstadoGeneral(i.elementosBotiquin as Record<string, { estado: string | null }>);
+          senalizacion = senalizacion || "Bueno";
+          accesibilidad = accesibilidad || "Bueno";
+        } else if (isCamilla && !estadoGeneral) {
+          estadoGeneral = calcularEstadoGeneral(i.elementosCamilla as Record<string, { estado: string | null }>);
+          senalizacion = senalizacion || "Bueno";
+          accesibilidad = accesibilidad || "Bueno";
+        } else if (isKit && !estadoGeneral) {
+          estadoGeneral = calcularEstadoGeneral(i.elementosKit as Record<string, { estado: string | null }>);
+          senalizacion = senalizacion || "Bueno";
+          accesibilidad = accesibilidad || "Bueno";
+        }
+
+        return {
+          equipoRecordId: i.equipoId,
+          codigoEquipo: i.equipo.codigo,
+          nombreEquipo: i.equipo.nombre,
+          categoria: i.equipo.categoria,
+          area: i.equipo.area,
+          estadoGeneral,
+          senalizacion,
+          accesibilidad,
+          presionManometro: isExtintor
+            ? mapEstadoDetallado(i.criteriosExtintorDetalle?.presion?.estado)
+            : i.criteriosExtintor.presionManometro,
+          manguera: isExtintor
+            ? mapEstadoDetallado(i.criteriosExtintorDetalle?.boquillaManguera?.estado)
+            : i.criteriosExtintor.manguera,
+          pinSeguridad: isExtintor
+            ? mapEstadoDetallado(i.criteriosExtintorDetalle?.pinSeguridad?.estado)
+            : i.criteriosExtintor.pinSeguridad,
+          soporteBase: isExtintor
+            ? mapEstadoDetallado(i.criteriosExtintorDetalle?.selloGarantia?.estado)
+            : i.criteriosExtintor.soporteBase,
+          estructura: isCamilla
+            ? mapEstadoDetallado(i.elementosCamilla?.estructura?.estado)
+            : i.criteriosCamilla.estructura,
+          correasArnes: isCamilla
+            ? mapEstadoDetallado(i.elementosCamilla?.correasArnes?.estado)
+            : i.criteriosCamilla.correasArnes,
+          completitudElementos: isBotiquin
+            ? calcularEstadoGeneral(i.elementosBotiquin as Record<string, { estado: string | null }>)
+            : (isKit ? calcularEstadoGeneral(i.elementosKit as Record<string, { estado: string | null }>) : null),
+          estadoContenedor: isBotiquin || isKit ? "Bueno" : null,
+          criteriosExtintorDetalle: isExtintor ? i.criteriosExtintorDetalle : null,
+          elementosBotiquin: isBotiquin ? i.elementosBotiquin : null,
+          elementosKit: isKit ? i.elementosKit : null,
+          verificacionesKit: isKit ? i.verificacionesKit : null,
+          elementosCamilla: isCamilla ? i.elementosCamilla : null,
+          infoExtintor: isExtintor ? i.infoExtintor : null,
+          fechaVencimiento: i.fechaVencimiento || null,
+          observaciones: i.observaciones,
+        };
+      });
+
+      // Solo incluir la firma del responsable de esta área + firmas globales
+      const firmaArea = firmasAreas.find((f) => f.area === area);
+      const responsables = [];
+      
+      // Agregar firma del responsable de área
+      if (firmaArea && firmaArea.firma && firmaArea.nombre.trim()) {
+        responsables.push({
+          tipo: "Responsable Área",
+          area: firmaArea.area,
+          nombre: firmaArea.nombre,
+          cedula: firmaArea.cedula,
+          cargo: firmaArea.cargo,
+          firma: firmaArea.firma,
+        });
+      }
+
+      // Agregar firma SST (obligatoria, ya validada arriba)
+      if (firmaSST.firma) {
+        responsables.push({
+          tipo: "Responsable SST",
+          area: area,
+          nombre: firmaSST.nombre,
+          cedula: firmaSST.cedula,
+          cargo: firmaSST.cargo,
+          firma: firmaSST.firma,
+        });
+      }
+
+      // Agregar firma COPASST (obligatoria, ya validada arriba)
+      if (firmaCOPASST.firma) {
+        responsables.push({
+          tipo: "Vigía COPASST",
+          area: area,
+          nombre: firmaCOPASST.nombre,
+          cedula: firmaCOPASST.cedula,
+          cargo: firmaCOPASST.cargo,
+          firma: firmaCOPASST.firma,
+        });
+      }
+
+      const payload = {
+        fechaInspeccion,
+        inspector,
+        observacionesGenerales: `Inspección parcial - Área: ${area}`,
+        detalles,
+        responsables,
+        areaParcial: area, // Indicador de que es una inspección parcial por área
+      };
+
+      const res = await fetch("/api/inspecciones-equipos", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      const json = await res.json();
+
+      if (json.success) {
+        // Marcar el área como guardada
+        setAreasGuardadas((prev) => new Set([...prev, area]));
+        setErrorMessage(null);
+        // Mostrar mensaje de éxito temporal
+        setPageState("success");
+        setTimeout(() => setPageState("idle"), 3000);
+      } else {
+        throw new Error(json.message || "Error al guardar la inspección del área");
+      }
+    } catch (err) {
+      setErrorMessage(err instanceof Error ? err.message : "Error desconocido");
+    } finally {
+      setGuardandoArea(null);
+    }
+  };
+
+  // Generar enlace de firma remota para un área
+  const generarEnlaceFirma = async (area: string) => {
+    // Validar firmas SST y COPASST obligatorias
+    const firmasFaltantes: string[] = [];
+    if (!firmaSST.firma) firmasFaltantes.push("Responsable SST");
+    if (!firmaCOPASST.firma) firmasFaltantes.push("Miembro COPASST");
+    
+    if (firmasFaltantes.length > 0) {
+      setErrorMessage(`Antes de generar el enlace debe completar las firmas de: ${firmasFaltantes.join(" y ")}.`);
+      return;
+    }
+
+    const stats = getEstadisticasArea(area);
+    
+    if (!stats.todosInspeccionados) {
+      setErrorMessage(`Debe inspeccionar todos los equipos del área "${area}" antes de generar el enlace.`);
+      return;
+    }
+
+    const firmaArea = firmasAreas.find((f) => f.area === area);
+    if (!firmaArea || !firmaArea.nombre.trim() || !firmaArea.cedula.trim()) {
+      setErrorMessage(`Debe seleccionar un responsable para el área "${area}" antes de generar el enlace.`);
+      return;
+    }
+
+    setGenerandoEnlace(area);
+    setErrorMessage(null);
+
+    try {
+      // Helper para convertir estados detallados (B/R/M/NT) a estados simples (Bueno/Malo/NA)
+      const mapEstadoDetallado = (estado: string | null | undefined): "Bueno" | "Malo" | "NA" | null => {
+        if (estado === null || estado === undefined) return null;
+        if (estado === "B") return "Bueno";
+        if (estado === "R" || estado === "M") return "Malo";
+        if (estado === "NT") return "NA";
+        return null;
+      };
+
+      // Helper para calcular estado general de elementos
+      const calcularEstadoGeneral = (
+        elementos: Record<string, { estado: string | null }> | null | undefined
+      ): "Bueno" | "Malo" | "NA" => {
+        if (!elementos) return "NA";
+        const estados = Object.values(elementos).map((e) => e.estado).filter(Boolean);
+        if (estados.length === 0) return "NA";
+        const malos = estados.filter((e) => e === "M" || e === "R").length;
+        if (malos > 0) return "Malo";
+        return "Bueno";
+      };
+
+      // Helper para calcular estado general de criterios de extintor
+      const calcularEstadoExtintor = (
+        criterios: Record<string, { estado: string | null }> | null | undefined
+      ): "Bueno" | "Malo" | "NA" => {
+        if (!criterios) return "NA";
+        const estados = Object.values(criterios).map((c) => c.estado).filter(Boolean);
+        if (estados.length === 0) return "NA";
+        const malos = estados.filter((e) => e === "M" || e === "R").length;
+        if (malos > 0) return "Malo";
+        return "Bueno";
+      };
+
+      // Filtrar solo equipos del área
+      const inspeccionesArea = inspecciones.filter((i) => i.equipo.area === area);
+      
+      const detalles = inspeccionesArea.map((i) => {
+        const isExtintor = i.equipo.categoria === "Extintor";
+        const isBotiquin = i.equipo.categoria === "Botiquin";
+        const isCamilla = i.equipo.categoria === "Camilla";
+        const isKit = i.equipo.categoria === "Kit Derrames";
+
+        let estadoGeneral = i.criteriosComunes.estadoGeneral;
+        let senalizacion = i.criteriosComunes.senalizacion;
+        let accesibilidad = i.criteriosComunes.accesibilidad;
+
+        if (isExtintor && !estadoGeneral) {
+          estadoGeneral = calcularEstadoExtintor(i.criteriosExtintorDetalle);
+          senalizacion = senalizacion || "Bueno";
+          accesibilidad = accesibilidad || "Bueno";
+        } else if (isBotiquin && !estadoGeneral) {
+          estadoGeneral = calcularEstadoGeneral(i.elementosBotiquin as Record<string, { estado: string | null }>);
+          senalizacion = senalizacion || "Bueno";
+          accesibilidad = accesibilidad || "Bueno";
+        } else if (isCamilla && !estadoGeneral) {
+          estadoGeneral = calcularEstadoGeneral(i.elementosCamilla as Record<string, { estado: string | null }>);
+          senalizacion = senalizacion || "Bueno";
+          accesibilidad = accesibilidad || "Bueno";
+        } else if (isKit && !estadoGeneral) {
+          estadoGeneral = calcularEstadoGeneral(i.elementosKit as Record<string, { estado: string | null }>);
+          senalizacion = senalizacion || "Bueno";
+          accesibilidad = accesibilidad || "Bueno";
+        }
+
+        return {
+          equipoRecordId: i.equipoId,
+          codigoEquipo: i.equipo.codigo,
+          nombreEquipo: i.equipo.nombre,
+          categoria: i.equipo.categoria,
+          area: i.equipo.area,
+          estadoGeneral,
+          senalizacion,
+          accesibilidad,
+          presionManometro: isExtintor
+            ? mapEstadoDetallado(i.criteriosExtintorDetalle?.presion?.estado)
+            : i.criteriosExtintor.presionManometro,
+          manguera: isExtintor
+            ? mapEstadoDetallado(i.criteriosExtintorDetalle?.boquillaManguera?.estado)
+            : i.criteriosExtintor.manguera,
+          pinSeguridad: isExtintor
+            ? mapEstadoDetallado(i.criteriosExtintorDetalle?.pinSeguridad?.estado)
+            : i.criteriosExtintor.pinSeguridad,
+          soporteBase: isExtintor
+            ? mapEstadoDetallado(i.criteriosExtintorDetalle?.selloGarantia?.estado)
+            : i.criteriosExtintor.soporteBase,
+          estructura: isCamilla
+            ? mapEstadoDetallado(i.elementosCamilla?.estructura?.estado)
+            : i.criteriosCamilla.estructura,
+          correasArnes: isCamilla
+            ? mapEstadoDetallado(i.elementosCamilla?.correasArnes?.estado)
+            : i.criteriosCamilla.correasArnes,
+          completitudElementos: isBotiquin
+            ? calcularEstadoGeneral(i.elementosBotiquin as Record<string, { estado: string | null }>)
+            : (isKit ? calcularEstadoGeneral(i.elementosKit as Record<string, { estado: string | null }>) : null),
+          estadoContenedor: isBotiquin || isKit ? "Bueno" : null,
+          criteriosExtintorDetalle: isExtintor ? i.criteriosExtintorDetalle : null,
+          elementosBotiquin: isBotiquin ? i.elementosBotiquin : null,
+          elementosKit: isKit ? i.elementosKit : null,
+          verificacionesKit: isKit ? i.verificacionesKit : null,
+          elementosCamilla: isCamilla ? i.elementosCamilla : null,
+          infoExtintor: isExtintor ? i.infoExtintor : null,
+          fechaVencimiento: i.fechaVencimiento || null,
+          observaciones: i.observaciones,
+        };
+      });
+
+      const payload = {
+        fechaInspeccion,
+        inspector,
+        area,
+        observacionesGenerales: `Inspección - Área: ${area}`,
+        detalles,
+        responsable: {
+          nombre: firmaArea.nombre,
+          cedula: firmaArea.cedula,
+          cargo: firmaArea.cargo || "Responsable de Área",
+        },
+        // Firmas globales obligatorias (ya validadas arriba)
+        firmaSST: {
+          nombre: firmaSST.nombre,
+          cedula: firmaSST.cedula,
+          cargo: firmaSST.cargo,
+          firma: firmaSST.firma,
+        },
+        firmaCOPASST: {
+          nombre: firmaCOPASST.nombre,
+          cedula: firmaCOPASST.cedula,
+          cargo: firmaCOPASST.cargo,
+          firma: firmaCOPASST.firma,
+        },
+      };
+
+      const res = await fetch("/api/inspecciones-equipos/generar-link", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      const json = await res.json();
+
+      if (json.success && json.data?.firmaUrl) {
+        // Guardar el enlace (el área NO está guardada aún, solo el enlace)
+        setEnlacesFirma((prev) => ({ ...prev, [area]: json.data.firmaUrl }));
+        // NO marcar como guardada - se guardará cuando el responsable firme y se confirme
+        setPageState("success");
+        setTimeout(() => setPageState("idle"), 3000);
+      } else {
+        throw new Error(json.message || "Error al generar el enlace");
+      }
+    } catch (err) {
+      setErrorMessage(err instanceof Error ? err.message : "Error desconocido");
+    } finally {
+      setGenerandoEnlace(null);
+    }
+  };
+
+  // Copiar enlace al portapapeles
+  const copiarEnlace = async (area: string) => {
+    const enlace = enlacesFirma[area];
+    if (!enlace) return;
+    
+    try {
+      await navigator.clipboard.writeText(enlace);
+      setEnlaceCopiado(area);
+      setTimeout(() => setEnlaceCopiado(null), 2000);
+    } catch {
+      setErrorMessage("No se pudo copiar el enlace");
+    }
+  };
+
+  // Verificar si la firma remota ya se completó
+  // silent: si es true, no muestra mensajes de error (para polling automático)
+  const verificarFirmaRemota = async (area: string, silent = false) => {
+    const enlace = enlacesFirma[area];
+    if (!enlace) return false;
+
+    // Extraer el token del enlace
+    const url = new URL(enlace);
+    const token = url.searchParams.get("t");
+    if (!token) return false;
+
+    if (!silent) setVerificandoFirma(area);
+
+    try {
+      const res = await fetch(`/api/inspecciones-equipos/token/validar?t=${encodeURIComponent(token)}`);
+      const json = await res.json();
+
+      if (json.success && json.data) {
+        if (json.data.yaFirmado && json.data.firmaData) {
+          // La firma se completó remotamente - obtener la firma real
+          setFirmasRemotas((prev) => ({ ...prev, [area]: true }));
+          
+          // Actualizar firmasAreas con la firma REAL obtenida del servidor
+          setFirmasAreas((prev) =>
+            prev.map((f) =>
+              f.area === area
+                ? { ...f, firma: json.data.firmaData.firma }
+                : f
+            )
+          );
+          
+          if (!silent) {
+            setPageState("success");
+            setTimeout(() => setPageState("idle"), 2000);
+          }
+          return true;
+        } else {
+          if (!silent) {
+            setErrorMessage(`La firma del área "${area}" aún está pendiente.`);
+          }
+        }
+      }
+    } catch {
+      if (!silent) {
+        setErrorMessage("Error al verificar el estado de la firma");
+      }
+    } finally {
+      if (!silent) setVerificandoFirma(null);
+    }
+    return false;
+  };
+
+  // Polling automático para verificar firmas remotas pendientes
+  useEffect(() => {
+    // Solo hacer polling si hay enlaces generados y firmas pendientes
+    const enlacesPendientes = Object.entries(enlacesFirma).filter(
+      ([area]) => !firmasRemotas[area]
+    );
+
+    if (enlacesPendientes.length === 0) return;
+
+    const intervalId = setInterval(() => {
+      enlacesPendientes.forEach(([area]) => {
+        verificarFirmaRemota(area, true); // Verificar silenciosamente
+      });
+    }, 5000); // Verificar cada 5 segundos
+
+    return () => clearInterval(intervalId);
+  }, [enlacesFirma, firmasRemotas]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ══════════════════════════════════════════════════════════
+  // Funciones para gestión de equipos (editar/agregar)
+  // ══════════════════════════════════════════════════════════
+  
+  // Abrir modal para editar equipo existente
+  const abrirModalEditarEquipo = (equipo: EquipoItem) => {
+    setEquipoEditando(equipo);
+    setFormEquipo({
+      codigo: equipo.codigo,
+      nombre: equipo.nombre,
+      categoria: equipo.categoria,
+      tipoEspecifico: equipo.tipoEspecifico,
+      area: equipo.area,
+      ubicacion: equipo.ubicacion,
+      capacidad: equipo.capacidad,
+      fechaVencimiento: equipo.fechaVencimiento,
+      estado: equipo.estado,
+      descripcion: equipo.descripcion,
+    });
+    setAreaParaNuevoEquipo(null);
+    setModalEquipoAbierto(true);
+  };
+
+  // Abrir modal para agregar nuevo equipo en un área
+  const abrirModalNuevoEquipo = (area: string) => {
+    setEquipoEditando(null);
+    setFormEquipo({
+      codigo: "",
+      nombre: "",
+      categoria: "Extintor",
+      tipoEspecifico: "",
+      area: area,
+      ubicacion: "",
+      capacidad: "",
+      fechaVencimiento: null,
+      estado: "Activo",
+      descripcion: "",
+    });
+    setAreaParaNuevoEquipo(area);
+    setModalEquipoAbierto(true);
+  };
+
+  // Cerrar modal
+  const cerrarModalEquipo = () => {
+    setModalEquipoAbierto(false);
+    setEquipoEditando(null);
+    setAreaParaNuevoEquipo(null);
+    setFormEquipo({
+      codigo: "",
+      nombre: "",
+      categoria: "Extintor",
+      tipoEspecifico: "",
+      area: "",
+      ubicacion: "",
+      capacidad: "",
+      fechaVencimiento: null,
+      estado: "Activo",
+      descripcion: "",
+    });
+  };
+
+  // Guardar equipo (crear o actualizar)
+  const guardarEquipo = async () => {
+    // Validar campos requeridos
+    if (!formEquipo.codigo?.trim() || !formEquipo.nombre?.trim() || !formEquipo.categoria || !formEquipo.area) {
+      setErrorMessage("Código, nombre, categoría y área son requeridos");
+      return;
+    }
+
+    setGuardandoEquipo(true);
+    setErrorMessage(null);
+
+    try {
+      const url = "/api/equipos-emergencia";
+      const method = equipoEditando ? "PUT" : "POST";
+      const body = equipoEditando 
+        ? { id: equipoEditando.id, ...formEquipo }
+        : formEquipo;
+
+      const res = await fetch(url, {
+        method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+
+      const json = await res.json();
+
+      if (!json.success) {
+        setErrorMessage(json.message || "Error al guardar el equipo");
+        return;
+      }
+
+      // Recargar la lista de equipos para reflejar los cambios
+      await fetchEquipos();
+      cerrarModalEquipo();
+    } catch {
+      setErrorMessage("Error de conexión al guardar el equipo");
+    } finally {
+      setGuardandoEquipo(false);
+    }
+  };
 
   // Guardar inspección
   const guardarInspeccion = async () => {
@@ -1383,14 +1935,6 @@ export default function InspeccionEquiposPage() {
 
             <div className="flex items-center gap-3">
               <button
-                onClick={llenarDatosPrueba}
-                className="flex items-center gap-2 px-3 py-2 rounded-lg bg-yellow-500/20 hover:bg-yellow-500/30 text-yellow-300 border border-yellow-500/30 transition-all"
-                title="Llenar formulario con datos de prueba"
-              >
-                <Zap size={18} />
-                <span className="hidden sm:inline">Prueba</span>
-              </button>
-              <button
                 onClick={() => router.push("/dashboard/inspecciones-equipos/equipos")}
                 className="flex items-center gap-2 px-4 py-2 rounded-lg bg-white/10 hover:bg-white/20 text-white border border-white/20 transition-all"
               >
@@ -1404,18 +1948,37 @@ export default function InspeccionEquiposPage() {
                 <History size={18} />
                 <span className="hidden sm:inline">Historial</span>
               </button>
+              
+              {/* Indicador de áreas guardadas */}
+              {areasGuardadas.size > 0 && (
+                <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-green-500/20 border border-green-500/30">
+                  <CheckCircle size={16} className="text-green-400" />
+                  <span className="text-xs text-green-300">
+                    {areasGuardadas.size}/{areas.length} áreas
+                  </span>
+                </div>
+              )}
+              
               <button
                 onClick={guardarInspeccion}
                 disabled={pageState === "saving" || !todosInspeccionados || !todasLasFirmas}
                 className="flex items-center gap-2 px-4 py-2 rounded-lg bg-red-500 hover:bg-red-600 text-white disabled:opacity-50 disabled:cursor-not-allowed transition-all"
-                title={!todosInspeccionados ? `Faltan ${totalEquipos - equiposInspeccionados} equipos por inspeccionar` : !todasLasFirmas ? "Faltan firmas de responsables" : "Guardar inspección"}
+                title={
+                  areasGuardadas.size === areas.length && areas.length > 0
+                    ? "Todas las áreas ya fueron guardadas"
+                    : !todosInspeccionados 
+                      ? `Faltan ${totalEquipos - equiposInspeccionados} equipos por inspeccionar` 
+                      : !todasLasFirmas 
+                        ? "Faltan firmas de responsables" 
+                        : "Guardar todas las áreas restantes"
+                }
               >
                 {pageState === "saving" ? (
                   <Loader2 size={18} className="animate-spin" />
                 ) : (
                   <Save size={18} />
                 )}
-                <span className="hidden sm:inline">Guardar</span>
+                <span className="hidden sm:inline">Guardar Todo</span>
               </button>
             </div>
           </div>
@@ -1655,6 +2218,17 @@ export default function InspeccionEquiposPage() {
                                     {equipoInspeccionado(insp) && (
                                       <CheckCircle className="w-4 h-4 text-green-400" />
                                     )}
+                                    {/* Botón editar equipo */}
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        abrirModalEditarEquipo(insp.equipo);
+                                      }}
+                                      className="p-1 rounded hover:bg-white/10 text-white/40 hover:text-white/80 transition-colors"
+                                      title="Editar características del equipo"
+                                    >
+                                      <Pencil className="w-3.5 h-3.5" />
+                                    </button>
                                   </div>
                                   <div className="flex items-center gap-3 text-xs text-white/50 mt-0.5">
                                     <span>Código: {insp.equipo.codigo}</span>
@@ -2178,6 +2752,17 @@ export default function InspeccionEquiposPage() {
                         );
                       })}
 
+                      {/* Botón para agregar nuevo equipo en esta área */}
+                      <div className="p-4 border-t border-white/10">
+                        <button
+                          onClick={() => abrirModalNuevoEquipo(area)}
+                          className="flex items-center justify-center gap-2 w-full py-2.5 rounded-lg border-2 border-dashed border-white/20 text-white/60 text-sm font-medium hover:border-red-400/50 hover:text-red-300 hover:bg-red-500/5 transition-all"
+                        >
+                          <Plus className="w-4 h-4" />
+                          Agregar Equipo en {area}
+                        </button>
+                      </div>
+
                       {/* Firma del Responsable de Área */}
                       {firmaArea && (
                         <div className="p-4 border-t border-white/10 bg-white/5">
@@ -2245,17 +2830,226 @@ export default function InspeccionEquiposPage() {
                                   <Eraser className="w-4 h-4" />
                                 </button>
                               </div>
+                            ) : enlacesFirma[area] ? (
+                              // Ya se generó el enlace, mostrar opciones
+                              <div className="flex items-center gap-2">
+                                <Link2 className="w-4 h-4 text-blue-400" />
+                                <span className="text-xs text-blue-400">Enlace generado</span>
+                              </div>
                             ) : (
-                              <button
-                                onClick={() => setFirmandoArea(area)}
-                                disabled={!firmaArea.nombre.trim()}
-                                className="flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-red-500/20 border border-red-400/30 text-red-300 text-sm font-medium hover:bg-red-500/30 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
-                              >
-                                <PenTool className="w-4 h-4" />
-                                Firmar
-                              </button>
+                              <div className="flex items-center gap-2">
+                                <button
+                                  onClick={() => setFirmandoArea(area)}
+                                  disabled={!firmaArea.nombre.trim()}
+                                  className="flex items-center justify-center gap-2 px-3 py-2 rounded-lg bg-red-500/20 border border-red-400/30 text-red-300 text-xs font-medium hover:bg-red-500/30 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                                  title="Firmar directamente en esta pantalla"
+                                >
+                                  <PenTool className="w-3.5 h-3.5" />
+                                  Firmar
+                                </button>
+                                <span className="text-white/30 text-xs">o</span>
+                                <button
+                                  onClick={() => generarEnlaceFirma(area)}
+                                  disabled={!firmaArea.nombre.trim() || !firmaArea.cedula.trim() || generandoEnlace === area || !getEstadisticasArea(area).todosInspeccionados}
+                                  className="flex items-center justify-center gap-2 px-3 py-2 rounded-lg bg-blue-500/20 border border-blue-400/30 text-blue-300 text-xs font-medium hover:bg-blue-500/30 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                                  title="Generar enlace para que el responsable firme remotamente"
+                                >
+                                  {generandoEnlace === area ? (
+                                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                  ) : (
+                                    <Link2 className="w-3.5 h-3.5" />
+                                  )}
+                                  Enviar Enlace
+                                </button>
+                              </div>
                             )}
                           </div>
+                          
+                          {/* Enlace de firma generado */}
+                          {enlacesFirma[area] && (
+                            <div className={`mt-3 p-3 rounded-lg border ${
+                              firmasRemotas[area] 
+                                ? "bg-green-500/10 border-green-500/20" 
+                                : "bg-blue-500/10 border-blue-500/20"
+                            }`}>
+                              {firmasRemotas[area] ? (
+                                // Firma remota completada
+                                <div className="flex items-center gap-2">
+                                  <CheckCircle className="w-5 h-5 text-green-400" />
+                                  <div>
+                                    <p className="text-sm font-medium text-green-400">Firma completada</p>
+                                    <p className="text-xs text-green-400/70">
+                                      {firmaArea.nombre} firmó remotamente
+                                    </p>
+                                  </div>
+                                </div>
+                              ) : (
+                                // Enlace pendiente de firma
+                                <>
+                                  <div className="flex items-center justify-between mb-2">
+                                    <span className="text-xs text-blue-300 font-medium flex items-center gap-1.5">
+                                      <Link2 className="w-3.5 h-3.5" />
+                                      Enlace de firma para {firmaArea.nombre}
+                                    </span>
+                                    <span className="text-[10px] text-blue-400/60">Válido por 72 horas</span>
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    <input
+                                      type="text"
+                                      value={enlacesFirma[area]}
+                                      readOnly
+                                      className="flex-1 px-2 py-1.5 text-xs rounded bg-white/5 border border-white/10 text-white/70 truncate"
+                                    />
+                                    <button
+                                      onClick={() => copiarEnlace(area)}
+                                      className={`p-2 rounded-lg transition-all ${
+                                        enlaceCopiado === area
+                                          ? "bg-green-500/20 text-green-400"
+                                          : "bg-white/10 hover:bg-white/20 text-white/70"
+                                      }`}
+                                      title={enlaceCopiado === area ? "¡Copiado!" : "Copiar enlace"}
+                                    >
+                                      {enlaceCopiado === area ? (
+                                        <Check className="w-4 h-4" />
+                                      ) : (
+                                        <Copy className="w-4 h-4" />
+                                      )}
+                                    </button>
+                                    <a
+                                      href={enlacesFirma[area]}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="p-2 rounded-lg bg-white/10 hover:bg-white/20 text-white/70 transition-all"
+                                      title="Abrir enlace en nueva pestaña"
+                                    >
+                                      <ExternalLink className="w-4 h-4" />
+                                    </a>
+                                    <button
+                                      onClick={() => verificarFirmaRemota(area)}
+                                      disabled={verificandoFirma === area}
+                                      className="p-2 rounded-lg bg-blue-500/20 hover:bg-blue-500/30 text-blue-300 transition-all disabled:opacity-50"
+                                      title="Verificar si ya firmó"
+                                    >
+                                      {verificandoFirma === area ? (
+                                        <Loader2 className="w-4 h-4 animate-spin" />
+                                      ) : (
+                                        <RefreshCw className="w-4 h-4" />
+                                      )}
+                                    </button>
+                                  </div>
+                                  <p className="text-[10px] text-white/40 mt-2">
+                                    Comparte este enlace. Presiona <RefreshCw className="w-3 h-3 inline" /> para verificar si ya firmó.
+                                  </p>
+                                </>
+                              )}
+                            </div>
+                          )}
+                          
+                          {/* Botón Guardar Área */}
+                          {(() => {
+                            const statsArea = getEstadisticasArea(area);
+                            const tieneEnlace = !!enlacesFirma[area];
+                            const firmaRemotaCompletada = !!firmasRemotas[area];
+                            
+                            // Si ya está guardada en BD
+                            if (statsArea.yaGuardada) {
+                              return (
+                                <div className="mt-4 flex items-center justify-between">
+                                  <div className="text-xs text-green-400">
+                                    <span className="flex items-center gap-1.5">
+                                      <CheckCircle className="w-4 h-4" />
+                                      Área guardada exitosamente
+                                    </span>
+                                  </div>
+                                </div>
+                              );
+                            }
+                            
+                            // Si se generó enlace y la firma remota YA se completó
+                            // Mostrar botón para guardar definitivamente
+                            if (tieneEnlace && firmaRemotaCompletada) {
+                              return (
+                                <div className="mt-4 flex items-center justify-between">
+                                  <div className="text-xs text-green-400">
+                                    <span className="flex items-center gap-1.5">
+                                      <CheckCircle className="w-4 h-4" />
+                                      Firma remota recibida
+                                    </span>
+                                  </div>
+                                  <button
+                                    onClick={() => guardarInspeccionPorArea(area)}
+                                    disabled={guardandoArea === area}
+                                    className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all bg-green-500 hover:bg-green-600 text-white"
+                                  >
+                                    {guardandoArea === area ? (
+                                      <>
+                                        <Loader2 className="w-4 h-4 animate-spin" />
+                                        Guardando...
+                                      </>
+                                    ) : (
+                                      <>
+                                        <Save className="w-4 h-4" />
+                                        Confirmar y Guardar
+                                      </>
+                                    )}
+                                  </button>
+                                </div>
+                              );
+                            }
+                            
+                            // Si se generó enlace pero aún no se ha firmado remotamente
+                            if (tieneEnlace) {
+                              return (
+                                <div className="mt-4 flex items-center justify-between">
+                                  <div className="text-xs text-yellow-400">
+                                    <span className="flex items-center gap-1.5">
+                                      <Clock className="w-4 h-4" />
+                                      Esperando firma remota del responsable...
+                                    </span>
+                                  </div>
+                                </div>
+                              );
+                            }
+                            
+                            // Estado normal - no hay enlace generado
+                            return (
+                              <div className="mt-4 flex items-center justify-between">
+                                <div className="text-xs text-white/50">
+                                  <span>
+                                    {statsArea.inspeccionados}/{statsArea.total} equipos inspeccionados
+                                    {!statsArea.firmaCompleta && " · Falta firma"}
+                                  </span>
+                                </div>
+                                <button
+                                  onClick={() => guardarInspeccionPorArea(area)}
+                                  disabled={!statsArea.puedeGuardar || guardandoArea === area}
+                                  className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                                    statsArea.puedeGuardar
+                                      ? "bg-red-500 hover:bg-red-600 text-white"
+                                      : "bg-white/10 border border-white/20 text-white/50 cursor-not-allowed"
+                                  }`}
+                                  title={
+                                    statsArea.yaGuardada
+                                      ? "Área ya guardada"
+                                      : !statsArea.todosInspeccionados
+                                        ? `Faltan ${statsArea.total - statsArea.inspeccionados} equipos por inspeccionar`
+                                        : !statsArea.firmaCompleta
+                                          ? "Falta la firma del responsable de área"
+                                          : `Guardar inspección del área ${area}`
+                                  }
+                                >
+                                  {guardandoArea === area ? (
+                                    <Loader2 className="w-4 h-4 animate-spin" />
+                                  ) : statsArea.yaGuardada ? (
+                                    <CheckCircle className="w-4 h-4" />
+                                  ) : (
+                                    <Save className="w-4 h-4" />
+                                  )}
+                                  {statsArea.yaGuardada ? "Guardado" : "Guardar Área"}
+                                </button>
+                              </div>
+                            );
+                          })()}
                         </div>
                       )}
                     </div>
@@ -2460,6 +3254,203 @@ export default function InspeccionEquiposPage() {
           onConfirm={confirmarFirmaGlobal}
           onCancel={() => setFirmandoGlobal(null)}
         />
+      )}
+
+      {/* Modal de edición/creación de equipo */}
+      {modalEquipoAbierto && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-[#1a1a2e] border border-white/10 rounded-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+            {/* Header del modal */}
+            <div className="flex items-center justify-between p-4 border-b border-white/10">
+              <h3 className="text-lg font-semibold text-white">
+                {equipoEditando ? "Editar Equipo" : "Agregar Nuevo Equipo"}
+              </h3>
+              <button
+                onClick={cerrarModalEquipo}
+                className="p-2 rounded-lg hover:bg-white/10 text-white/60 hover:text-white transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Formulario */}
+            <div className="p-4 space-y-4">
+              {/* Código y Nombre */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-white/70 mb-1">
+                    Código <span className="text-red-400">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={formEquipo.codigo || ""}
+                    onChange={(e) => setFormEquipo({ ...formEquipo, codigo: e.target.value })}
+                    placeholder="Ej: EXT-001"
+                    className="w-full px-3 py-2 text-sm rounded-lg bg-white/5 border border-white/10 text-white placeholder-white/30 focus:outline-none focus:border-red-500/50"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-white/70 mb-1">
+                    Nombre <span className="text-red-400">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={formEquipo.nombre || ""}
+                    onChange={(e) => setFormEquipo({ ...formEquipo, nombre: e.target.value })}
+                    placeholder="Ej: Extintor ABC 10lb"
+                    className="w-full px-3 py-2 text-sm rounded-lg bg-white/5 border border-white/10 text-white placeholder-white/30 focus:outline-none focus:border-red-500/50"
+                  />
+                </div>
+              </div>
+
+              {/* Categoría y Área */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-white/70 mb-1">
+                    Categoría <span className="text-red-400">*</span>
+                  </label>
+                  <select
+                    value={formEquipo.categoria || "Extintor"}
+                    onChange={(e) => setFormEquipo({ ...formEquipo, categoria: e.target.value })}
+                    className="w-full px-3 py-2 text-sm rounded-lg bg-white/5 border border-white/10 text-white focus:outline-none focus:border-red-500/50"
+                  >
+                    {CATEGORIAS.map((cat) => (
+                      <option key={cat} value={cat} className="bg-[#1a1a2e]">
+                        {cat}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-white/70 mb-1">
+                    Área <span className="text-red-400">*</span>
+                  </label>
+                  <select
+                    value={formEquipo.area || ""}
+                    onChange={(e) => setFormEquipo({ ...formEquipo, area: e.target.value })}
+                    className="w-full px-3 py-2 text-sm rounded-lg bg-white/5 border border-white/10 text-white focus:outline-none focus:border-red-500/50"
+                  >
+                    <option value="" className="bg-[#1a1a2e]">Seleccionar...</option>
+                    {areas.map((a) => (
+                      <option key={a} value={a} className="bg-[#1a1a2e]">
+                        {a}
+                      </option>
+                    ))}
+                    {/* Si el área del equipo no está en la lista, mostrarla */}
+                    {formEquipo.area && !areas.includes(formEquipo.area) && (
+                      <option value={formEquipo.area} className="bg-[#1a1a2e]">
+                        {formEquipo.area}
+                      </option>
+                    )}
+                  </select>
+                </div>
+              </div>
+
+              {/* Tipo Específico y Ubicación */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-white/70 mb-1">
+                    Tipo Específico
+                  </label>
+                  <input
+                    type="text"
+                    value={formEquipo.tipoEspecifico || ""}
+                    onChange={(e) => setFormEquipo({ ...formEquipo, tipoEspecifico: e.target.value })}
+                    placeholder="Ej: ABC, CO2, Polvo Químico"
+                    className="w-full px-3 py-2 text-sm rounded-lg bg-white/5 border border-white/10 text-white placeholder-white/30 focus:outline-none focus:border-red-500/50"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-white/70 mb-1">
+                    Ubicación
+                  </label>
+                  <input
+                    type="text"
+                    value={formEquipo.ubicacion || ""}
+                    onChange={(e) => setFormEquipo({ ...formEquipo, ubicacion: e.target.value })}
+                    placeholder="Ej: Pasillo principal"
+                    className="w-full px-3 py-2 text-sm rounded-lg bg-white/5 border border-white/10 text-white placeholder-white/30 focus:outline-none focus:border-red-500/50"
+                  />
+                </div>
+              </div>
+
+              {/* Capacidad y Fecha Vencimiento */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-white/70 mb-1">
+                    Capacidad
+                  </label>
+                  <input
+                    type="text"
+                    value={formEquipo.capacidad || ""}
+                    onChange={(e) => setFormEquipo({ ...formEquipo, capacidad: e.target.value })}
+                    placeholder="Ej: 10 lb, 20 unidades"
+                    className="w-full px-3 py-2 text-sm rounded-lg bg-white/5 border border-white/10 text-white placeholder-white/30 focus:outline-none focus:border-red-500/50"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-white/70 mb-1">
+                    Fecha Vencimiento
+                  </label>
+                  <input
+                    type="date"
+                    value={formEquipo.fechaVencimiento || ""}
+                    onChange={(e) => setFormEquipo({ ...formEquipo, fechaVencimiento: e.target.value || null })}
+                    className="w-full px-3 py-2 text-sm rounded-lg bg-white/5 border border-white/10 text-white focus:outline-none focus:border-red-500/50"
+                  />
+                </div>
+              </div>
+
+              {/* Descripción */}
+              <div>
+                <label className="block text-xs font-medium text-white/70 mb-1">
+                  Descripción / Observaciones
+                </label>
+                <textarea
+                  value={formEquipo.descripcion || ""}
+                  onChange={(e) => setFormEquipo({ ...formEquipo, descripcion: e.target.value })}
+                  placeholder="Notas adicionales sobre el equipo..."
+                  rows={2}
+                  className="w-full px-3 py-2 text-sm rounded-lg bg-white/5 border border-white/10 text-white placeholder-white/30 focus:outline-none focus:border-red-500/50 resize-none"
+                />
+              </div>
+
+              {/* Mensaje de error */}
+              {errorMessage && (
+                <div className="p-3 rounded-lg bg-red-500/20 border border-red-500/30">
+                  <p className="text-sm text-red-300">{errorMessage}</p>
+                </div>
+              )}
+            </div>
+
+            {/* Footer con botones */}
+            <div className="flex items-center justify-end gap-3 p-4 border-t border-white/10">
+              <button
+                onClick={cerrarModalEquipo}
+                className="px-4 py-2 text-sm font-medium rounded-lg text-white/70 hover:text-white hover:bg-white/10 transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={guardarEquipo}
+                disabled={guardandoEquipo}
+                className="flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg bg-red-500 hover:bg-red-600 text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {guardandoEquipo ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Guardando...
+                  </>
+                ) : (
+                  <>
+                    <Save className="w-4 h-4" />
+                    {equipoEditando ? "Guardar Cambios" : "Crear Equipo"}
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

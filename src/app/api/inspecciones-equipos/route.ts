@@ -224,6 +224,7 @@ export async function POST(request: NextRequest) {
             },
           },
         ],
+        typecast: true,
       }),
     });
 
@@ -351,7 +352,7 @@ export async function POST(request: NextRequest) {
       const resp = await fetch(detalleUrl, {
         method: "POST",
         headers: getSGSSTHeaders(),
-        body: JSON.stringify({ records: batch }),
+        body: JSON.stringify({ records: batch, typecast: true }),
       });
       if (resp.ok) {
         const data: AirtableResponse = await resp.json();
@@ -385,9 +386,10 @@ export async function POST(request: NextRequest) {
       
       // Mapear tipos del frontend a tipos de Airtable
       // Airtable solo acepta: "Responsable", "COPASST"
-      const tipoAirtable = tipoLimpio === "Responsable COPASST" || tipoLimpio === "COPASST" 
-        ? "COPASST" 
-        : "Responsable";
+      const esCOPASST = tipoLimpio === "Responsable COPASST" || 
+                        tipoLimpio === "COPASST" ||
+                        tipoLimpio === "Vigía COPASST";
+      const tipoAirtable = esCOPASST ? "COPASST" : "Responsable";
       
       // Debug: verificar valores
       console.log("Responsable - tipo original:", JSON.stringify(r.tipo), "limpio:", tipoLimpio, "airtable:", tipoAirtable);
@@ -409,7 +411,8 @@ export async function POST(request: NextRequest) {
 
       // Generar ID único basado en tipo y área (o índice)
       const tipoCorto = tipoLimpio === "Responsable Área" ? "AREA" :
-                        tipoLimpio === "Responsable SST" ? "SST" : "COPASST";
+                        tipoLimpio === "Responsable SST" ? "SST" : 
+                        esCOPASST ? "COPASST" : "RESP";
       const areaSuffix = r.area ? `-${r.area.replace(/\s+/g, "")}` : "";
       const idSuffix = tipoLimpio === "Responsable Área" ? areaSuffix : `-${idx}`;
 
@@ -429,14 +432,20 @@ export async function POST(request: NextRequest) {
 
     if (respRecords.length > 0) {
       // Debug: verificar responsables antes de enviar
-      console.log("Responsables a enviar:", JSON.stringify(respRecords[0]?.fields, null, 2));
+      console.log("Responsables a enviar:", respRecords.length, "registros");
+      console.log("Primer responsable:", JSON.stringify(respRecords[0]?.fields, null, 2));
+      
       const respResponse = await fetch(respUrl, {
         method: "POST",
         headers: getSGSSTHeaders(),
-        body: JSON.stringify({ records: respRecords }),
+        body: JSON.stringify({ records: respRecords, typecast: true }),
       });
       if (!respResponse.ok) {
-        console.error("Error creando responsables:", await respResponse.text());
+        const errorText = await respResponse.text();
+        console.error("Error creando responsables:", errorText);
+        // Continuar aunque falle, para no perder la inspección
+      } else {
+        console.log("Responsables creados correctamente");
       }
     }
 
