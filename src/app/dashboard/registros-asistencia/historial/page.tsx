@@ -234,8 +234,8 @@ export default function HistorialRegistrosPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [exportandoId, setExportandoId] = useState<string | null>(null);
-  const [exportandoPdfId, setExportandoPdfId] = useState<string | null>(null);
-  const [pdfsProgreso, setPdfsProgreso] = useState("");
+  const [exportandoEvalAuto, setExportandoEvalAuto] = useState(false);
+  const [evalAutoProgreso, setEvalAutoProgreso] = useState("");
 
   // ── Panel de detalle ──────────────────────────────────────
   const [detalle, setDetalle] = useState<RegistroDetalle | null>(null);
@@ -474,35 +474,64 @@ export default function HistorialRegistrosPage() {
     }
   };
 
-  const exportarPDF = async (registroId: string, tipo?: "regular" | "copasst") => {
-    setExportandoPdfId(registroId);
-    setPdfsProgreso(tipo === "copasst" ? "COPASST..." : tipo === "regular" ? "Regular..." : "Generando...");
+  const exportarEvaluacionesAuto = async (registroId: string) => {
+    setExportandoEvalAuto(true);
+    setEvalAutoProgreso("Detectando tipos...");
     try {
-      const res = await fetch("/api/evaluaciones/resultado-pdf-unificado", {
+      // 1. Detect populations
+      const pobRes = await fetch("/api/evaluaciones/poblaciones", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ registroRecordId: registroId, tipo }),
+        body: JSON.stringify({ registroRecordId: registroId }),
       });
-      if (!res.ok) {
-        const json = await res.json().catch(() => null);
-        throw new Error(json?.message || "Error al generar PDF de evaluaciones");
+      const pobJson = await pobRes.json();
+      if (!pobJson.success || !pobJson.poblaciones?.length) {
+        setError("No se encontraron evaluaciones para este evento");
+        return;
       }
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      const disposition = res.headers.get("Content-Disposition") || "";
-      const match = disposition.match(/filename="?([^"]+)"?/);
-      a.download = match?.[1] || "Evaluaciones.pdf";
-      document.body.appendChild(a);
-      a.click();
-      URL.revokeObjectURL(url);
-      a.remove();
+
+      const poblaciones: string[] = pobJson.poblaciones;
+
+      // 2. Generate PDF for each population
+      let generados = 0;
+      for (const pob of poblaciones) {
+        setEvalAutoProgreso(`Generando ${pob} (${generados + 1}/${poblaciones.length})...`);
+        try {
+          const res = await fetch("/api/evaluaciones/resultado-pdf-unificado", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ registroRecordId: registroId, tipo: pob }),
+          });
+          if (!res.ok) {
+            const json = await res.json().catch(() => null);
+            console.warn(`No se generó PDF para ${pob}:`, json?.message);
+            continue;
+          }
+          const blob = await res.blob();
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url;
+          const disposition = res.headers.get("Content-Disposition") || "";
+          const match = disposition.match(/filename="?([^"]+)"?/);
+          a.download = match?.[1] || `Evaluaciones_${pob}.pdf`;
+          document.body.appendChild(a);
+          a.click();
+          URL.revokeObjectURL(url);
+          a.remove();
+          generados++;
+        } catch (err) {
+          console.warn(`Error generando PDF para ${pob}:`, err);
+        }
+      }
+
+      if (generados === 0) {
+        setError("No se pudo generar ningún PDF de evaluaciones");
+      }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Error descargando PDF de evaluaciones");
+      setError(err instanceof Error ? err.message : "Error exportando evaluaciones");
     } finally {
-      setExportandoPdfId(null);
-      setPdfsProgreso("");
+      setExportandoEvalAuto(false);
+      setEvalAutoProgreso("");
     }
   };
 
@@ -617,7 +646,7 @@ export default function HistorialRegistrosPage() {
                         <th className="text-left text-xs font-semibold text-white/80 px-4 py-3 w-28">Área</th>
                         <th className="text-center text-xs font-semibold text-white/80 px-4 py-3 w-24">Asistentes</th>
                         <th className="text-center text-xs font-semibold text-white/80 px-4 py-3 w-28">Estado</th>
-                        <th className="text-center text-xs font-semibold text-white/80 px-4 py-3 w-32">Acciones</th>
+                        <th className="text-center text-xs font-semibold text-white/80 px-4 py-3 w-24">Acciones</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -665,42 +694,6 @@ export default function HistorialRegistrosPage() {
                               >
                                 <Eye className="w-3 h-3" />
                                 Ver
-                              </button>
-                              <button
-                                onClick={() => exportarExcel(reg.id, reg.nombreEvento)}
-                                disabled={exportandoId === reg.id}
-                                className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-sirius-verde/20 border border-sirius-verde/30 text-white text-xs font-medium hover:bg-sirius-verde/30 disabled:opacity-50 disabled:cursor-not-allowed transition-all cursor-pointer"
-                              >
-                                {exportandoId === reg.id ? (
-                                  <Loader2 className="w-3 h-3 animate-spin" />
-                                ) : (
-                                  <FileDown className="w-3 h-3" />
-                                )}
-                                Excel
-                              </button>
-                              <button
-                                onClick={() => exportarPDF(reg.id, "regular")}
-                                disabled={exportandoPdfId === reg.id}
-                                className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-violet-500/20 border border-violet-400/30 text-white text-xs font-medium hover:bg-violet-500/30 disabled:opacity-50 disabled:cursor-not-allowed transition-all cursor-pointer"
-                              >
-                                {exportandoPdfId === reg.id && pdfsProgreso === "Regular..." ? (
-                                  <Loader2 className="w-3 h-3 animate-spin" />
-                                ) : (
-                                  <FileText className="w-3 h-3" />
-                                )}
-                                Eval PDF
-                              </button>
-                              <button
-                                onClick={() => exportarPDF(reg.id, "copasst")}
-                                disabled={exportandoPdfId === reg.id}
-                                className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-amber-500/20 border border-amber-400/30 text-white text-xs font-medium hover:bg-amber-500/30 disabled:opacity-50 disabled:cursor-not-allowed transition-all cursor-pointer"
-                              >
-                                {exportandoPdfId === reg.id && pdfsProgreso === "COPASST..." ? (
-                                  <Loader2 className="w-3 h-3 animate-spin" />
-                                ) : (
-                                  <FileText className="w-3 h-3" />
-                                )}
-                                COPASST
                               </button>
                             </div>
                           </td>
@@ -1134,23 +1127,15 @@ export default function HistorialRegistrosPage() {
                     className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-sirius-verde/20 border border-sirius-verde/30 text-white font-medium hover:bg-sirius-verde/30 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
                   >
                     {exportandoId === detalle.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileDown className="w-4 h-4" />}
-                    Exportar Excel
+                    Exportar Asistencia
                   </button>
                   <button
-                    onClick={() => exportarPDF(detalle.id, "regular")}
-                    disabled={exportandoPdfId === detalle.id}
+                    onClick={() => exportarEvaluacionesAuto(detalle.id)}
+                    disabled={exportandoEvalAuto}
                     className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-violet-500/20 border border-violet-400/30 text-white font-medium hover:bg-violet-500/30 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
                   >
-                    {exportandoPdfId === detalle.id && pdfsProgreso === "Regular..." ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4" />}
-                    PDF Evaluaciones
-                  </button>
-                  <button
-                    onClick={() => exportarPDF(detalle.id, "copasst")}
-                    disabled={exportandoPdfId === detalle.id}
-                    className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-amber-500/20 border border-amber-400/30 text-white font-medium hover:bg-amber-500/30 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
-                  >
-                    {exportandoPdfId === detalle.id && pdfsProgreso === "COPASST..." ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4" />}
-                    PDF Evaluaciones COPASST
+                    {exportandoEvalAuto ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4" />}
+                    {exportandoEvalAuto ? evalAutoProgreso : "Exportar Evaluaciones"}
                   </button>
                 </div>
               </div>

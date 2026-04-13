@@ -328,13 +328,20 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // ── Filter evaluations by tipo (regular / copasst) ─────
+    // ── Filter evaluations by tipo (population) ───────────
     const filteredEvals = tipo
       ? bestEvals.filter((r) => {
           const plId = ((r.fields[eF.PLANTILLA] as string[]) || [])[0] || "";
-          const pob = (plantillaMap[plId]?.poblacion || "").toUpperCase();
-          if (tipo === "copasst") return pob.includes("COPASST");
-          return !pob.includes("COPASST");
+          const pob = (plantillaMap[plId]?.poblacion || "").trim().toUpperCase();
+          const tipoUpper = String(tipo).toUpperCase();
+          // Backwards compat: "regular" = not COPASST
+          if (tipoUpper === "REGULAR") return !pob.includes("COPASST");
+          // Backwards compat: "copasst"
+          if (tipoUpper === "COPASST") return pob.includes("COPASST");
+          // "General" matches empty/General population
+          if (tipoUpper === "GENERAL") return !pob || pob === "GENERAL";
+          // Any other population: exact includes match
+          return pob.includes(tipoUpper);
         })
       : bestEvals;
 
@@ -342,10 +349,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(
         {
           success: false,
-          message:
-            tipo === "copasst"
-              ? "No hay evaluaciones COPASST para este evento"
-              : "No hay evaluaciones regulares para este evento",
+          message: tipo
+            ? `No hay evaluaciones de tipo "${tipo}" para este evento`
+            : "No hay evaluaciones para este evento",
         },
         { status: 404 }
       );

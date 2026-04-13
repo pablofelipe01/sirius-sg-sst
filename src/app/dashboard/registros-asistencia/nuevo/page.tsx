@@ -285,12 +285,21 @@ export default function NuevoRegistroPage() {
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [lastSync, setLastSync] = useState<Date | null>(null);
 
-  // Precargar nombre del conferencista con el usuario actual
+  // Precargar nombre del conferencista desde Responsable SG-SST
   useEffect(() => {
-    if (user?.nombreCompleto && !nombreConferencista) {
-      setNombreConferencista(user.nombreCompleto);
-    }
-  }, [user, nombreConferencista]);
+    (async () => {
+      try {
+        const res = await fetch("/api/registros-asistencia/conferencista");
+        const json = await res.json();
+        if (json.success && json.nombre) {
+          setNombreConferencista(json.nombre);
+        }
+      } catch {
+        // silenciar — el campo queda editable
+      }
+    })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Cargar programaciones pendientes al montar
   const fetchProgramaciones = useCallback(async () => {
@@ -395,7 +404,7 @@ export default function NuevoRegistroPage() {
       setRegistroRecordId(data.registroRecordId);
       setRegistroIdLabel(data.registroIdLabel || "");
       setNombreEvento(data.nombreEvento || "");
-      setNombreConferencista(data.nombreConferencista || "");
+      // No restaurar conferencista — siempre se obtiene del Responsable SG-SST
       setFecha(data.fecha || formatDate(new Date()));
       if (data.signingLinks) { setSigningLinks(data.signingLinks); setShowLinksPanel(true); }
       fetchRegistroState(data.registroRecordId, false);
