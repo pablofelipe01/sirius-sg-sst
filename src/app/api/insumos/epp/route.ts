@@ -109,12 +109,13 @@ async function calcularStockDesdeMovimientos(
 
 /**
  * GET /api/insumos/epp
- * Devuelve todos los insumos de categoría EPP desde Airtable (Sirius Insumos Core).
- * Filtra por estado activo en Airtable y por categoría EPP en el servidor.
+ * Devuelve todos los insumos de categoría EPP y Dotación desde Airtable (Sirius Insumos Core).
+ * Filtra por estado activo en Airtable y por categoría EPP/Dotación en el servidor.
  */
 export async function GET() {
   try {
-    const { insumoTableId, eppCategoryRecordId } = airtableInsumosConfig;
+    const { insumoTableId, eppCategoryRecordId, dotacionCategoryRecordId } = airtableInsumosConfig;
+    const allowedCategories = [eppCategoryRecordId, dotacionCategoryRecordId].filter(Boolean);
     const url = getInsumosUrl(insumoTableId);
     const headers = getInsumosHeaders();
 
@@ -149,10 +150,10 @@ export async function GET() {
       offset = data.offset;
     } while (offset);
 
-    // Filtrar solo los insumos que pertenecen a la categoría EPP (server-side)
+    // Filtrar insumos que pertenecen a EPP o Dotación (server-side)
     const eppRecords = allRecords.filter((record) => {
       const categorias = record.fields[insumoFields.CATEGORIA] as string[] | undefined;
-      return categorias?.includes(eppCategoryRecordId);
+      return categorias?.some((catId) => allowedCategories.includes(catId));
     });
 
     // ── Calcular stock actual desde Movimientos ───────────

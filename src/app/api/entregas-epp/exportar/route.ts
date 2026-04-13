@@ -398,11 +398,12 @@ export async function GET(req: NextRequest) {
       tokensFields,
     } = airtableSGSSTConfig;
 
-    const { insumoTableId, insumoFields } = airtableInsumosConfig;
+    const { insumoTableId, insumoFields, categoriaTableId, categoriaFields } = airtableInsumosConfig;
     const { personalTableId, personalFields } = airtableConfig;
 
-    // ── Optional month filter (YYYY-MM) ─────────────────
+    // ── Optional filters ────────────────────────────────
     const mes = req.nextUrl.searchParams.get("mes");
+    const tipo = req.nextUrl.searchParams.get("tipo"); // "epp" | "dotacion"
     const entregasExtraParams: Record<string, string> = {
       [`sort[0][field]`]: entregasFields.FECHA_ENTREGA,
       [`sort[0][direction]`]: "desc",
@@ -414,10 +415,13 @@ export async function GET(req: NextRequest) {
     }
 
     // ── 1. Fetch all data in parallel ───────────────────
-    const [allEntregas, allInsumos, allPersonal] = await Promise.all([
+    const [allEntregas, allInsumos, allPersonal, allCategorias] = await Promise.all([
       fetchAllRecords(getSGSSTUrl(entregasTableId), sgHeaders, entregasExtraParams),
       fetchAllRecords(getInsumosUrl(insumoTableId), insHeaders),
       fetchAllRecords(getAirtableUrl(personalTableId), authHeaders),
+      tipo
+        ? fetchAllRecords(getInsumosUrl(categoriaTableId), insHeaders)
+        : Promise.resolve([]),
     ]);
 
     if (allEntregas.length === 0) {
@@ -428,9 +432,17 @@ export async function GET(req: NextRequest) {
     }
 
     // ── 2. Build lookup maps ────────────────────────────
+
+    // Map de categoría recordId → tipo ("EPP", "Dotación", etc.)
+    const categoryTipoMap = new Map<string, string>();
+    for (const cat of allCategorias) {
+      const tipoVal = (cat.fields[categoriaFields.TIPO] as string) || "";
+      categoryTipoMap.set(cat.id, tipoVal);
+    }
+
     const insumoMap = new Map<
       string,
-      { nombre: string; referencia: string; codigo: string }
+      { nombre: string; referencia: string; codigo: string; categoriaIds: string[] }
     >();
     for (const r of allInsumos) {
       const f = r.fields;
@@ -439,7 +451,23 @@ export async function GET(req: NextRequest) {
         nombre: (f[insumoFields.NOMBRE] as string) || codigo,
         referencia: parseReferenciaComercial(f[insumoFields.REFERENCIA_COMERCIAL]),
         codigo,
+        categoriaIds: (f[insumoFields.CATEGORIA] as string[]) || [],
       });
+    }
+
+    // Set de códigos de insumo que coinciden con el tipo solicitado
+    const normalize = (s: string) =>
+      s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    const tipoFilterCodes = new Set<string>();
+    if (tipo) {
+      const targetNorm = normalize(tipo);
+      for (const [codigo, info] of insumoMap) {
+        const matchesTipo = info.categoriaIds.some((catId) => {
+          const catTipo = categoryTipoMap.get(catId) || "";
+          return normalize(catTipo) === targetNorm;
+        });
+        if (matchesTipo) tipoFilterCodes.add(codigo);
+      }
     }
 
     const personalMap = new Map<
@@ -554,6 +582,10 @@ export async function GET(req: NextRequest) {
           if (!detRec) continue;
           const df = detRec.fields;
           const codigoInsumo = (df[detalleFields.CODIGO_INSUMO] as string) || "";
+
+          // Filtrar por tipo de insumo (EPP / Dotación)
+          if (tipo && tipoFilterCodes.size > 0 && !tipoFilterCodes.has(codigoInsumo)) continue;
+
           const insumoInfo = insumoMap.get(codigoInsumo);
 
           group.rows.push({
@@ -570,11 +602,27 @@ export async function GET(req: NextRequest) {
     }
 
     // ── 6. Create Excel Workbook ────────────────────────
+    // Eliminar grupos de empleados sin filas después del filtrado
+    if (tipo) {
+      for (const [key, group] of empleadoGroups) {
+        if (group.rows.length === 0) empleadoGroups.delete(key);
+      }
+    }
+
+    if (empleadoGroups.size === 0) {
+      const tipoLabel = tipo === "dotacion" ? "Dotación" : "EPP";
+      return NextResponse.json(
+        { success: false, message: `No hay entregas de ${tipoLabel} para el período seleccionado` },
+        { status: 404 }
+      );
+    }
+
     const workbook = new ExcelJS.Workbook();
     workbook.creator = "Sirius SG-SST";
     workbook.created = new Date();
 
-    const ws = workbook.addWorksheet("Entregas EPP", {
+    const sheetName = tipo === "dotacion" ? "Entregas Dotación" : "Entregas EPP";
+    const ws = workbook.addWorksheet(sheetName, {
       properties: { defaultColWidth: 16 },
       pageSetup: {
         paperSize: 9,
@@ -701,7 +749,7 @@ export async function GET(req: NextRequest) {
 
       ws.mergeCells(currentRow, 4, currentRow, TOTAL_COLS);
       const codeCell = ws.getCell(currentRow, 4);
-      codeCell.value = "CÓDIGO: FT-SST-029";
+      codeCell.value = tipo === "dotacion" ? "CÓDIGO: FT-SST-023" : "CÓDIGO: FT-SST-029";
       codeCell.font = { name: "Calibri", size: 10, bold: true, color: { argb: `FF${BRAND.AZUL_BARRANCA}` } };
       codeCell.alignment = { horizontal: "center", vertical: "middle" };
       codeCell.fill = {
@@ -717,7 +765,9 @@ export async function GET(req: NextRequest) {
       // Row 3: Title bar (Azul Barranca primario)
       ws.mergeCells(currentRow, 1, currentRow, TOTAL_COLS);
       const titleCell = ws.getCell(currentRow, 1);
-      titleCell.value = "FORMATO DE ENTREGA DE ELEMENTOS DE PROTECCIÓN PERSONAL";
+      titleCell.value = tipo === "dotacion"
+        ? "FORMATO DE ENTREGA DE DOTACIÓN"
+        : "FORMATO DE ENTREGA DE ELEMENTOS DE PROTECCIÓN PERSONAL";
       titleCell.font = {
         name: "Calibri",
         size: 12,
@@ -765,7 +815,7 @@ export async function GET(req: NextRequest) {
       // COLUMN HEADERS — Azul Barranca
       // ═══════════════════════════════════════════════════
       const colHeaders = [
-        "EPP ENTREGADO",
+        tipo === "dotacion" ? "DOTACIÓN ENTREGADA" : "EPP ENTREGADO",
         "CANTIDAD",
         "REFERENCIA COMERCIAL",
         "FECHA DE ENTREGA",
@@ -934,7 +984,8 @@ export async function GET(req: NextRequest) {
 
     // ── 8. Return as downloadable file ──────────────────
     const fileSuffix = mes || new Date().toISOString().slice(0, 10);
-    const filename = `Entregas_EPP_Sirius_${fileSuffix}.xlsx`;
+    const tipoSuffix = tipo === "dotacion" ? "Dotacion" : "EPP";
+    const filename = `Entregas_${tipoSuffix}_Sirius_${fileSuffix}.xlsx`;
 
     return new NextResponse(buffer, {
       status: 200,

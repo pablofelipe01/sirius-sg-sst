@@ -54,6 +54,7 @@ export const airtableInsumosConfig = {
 
   // ── Record IDs de referencia ──────────────────────────
   eppCategoryRecordId: process.env.AIRTABLE_EPP_CATEGORY_RECORD_ID!,
+  dotacionCategoryRecordId: process.env.AIRTABLE_DOTACION_CATEGORY_RECORD_ID!,
 };
 
 export function getInsumosUrl(tableId: string): string {
