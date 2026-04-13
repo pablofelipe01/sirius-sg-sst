@@ -812,6 +812,51 @@ export async function GET(req: NextRequest) {
       currentRow++;
 
       // ═══════════════════════════════════════════════════
+      // DOTACIÓN: Textos normativos (antes de la tabla)
+      // ═══════════════════════════════════════════════════
+      if (tipo === "dotacion") {
+        // Subtítulo ACTA
+        ws.mergeCells(currentRow, 1, currentRow, TOTAL_COLS);
+        const actaCell = ws.getCell(currentRow, 1);
+        actaCell.value = "ACTA DE ENTREGA DE DOTACIÓN";
+        actaCell.font = { name: "Calibri", size: 12, bold: true, color: { argb: `FF${BRAND.IMPERIAL}` } };
+        actaCell.alignment = { horizontal: "center", vertical: "middle" };
+        actaCell.border = allBorders;
+        ws.getRow(currentRow).height = 28;
+        currentRow++;
+
+        // Referencia con fecha de corte
+        const fechaCorte = group.rows[0]?.fechaEntrega
+          ? new Date(group.rows[0].fechaEntrega + "T12:00:00").toLocaleDateString("es-CO", {
+              timeZone: "America/Bogota",
+              day: "numeric",
+              month: "long",
+              year: "numeric",
+            })
+          : "";
+        ws.mergeCells(currentRow, 1, currentRow, TOTAL_COLS);
+        const refDotCell = ws.getCell(currentRow, 1);
+        refDotCell.value = fechaCorte
+          ? `Ref. Entrega de Dotación con Corte ${fechaCorte}.`
+          : "Ref. Entrega de Dotación.";
+        refDotCell.font = { name: "Calibri", size: 10, bold: true, underline: true, color: { argb: `FF${BRAND.IMPERIAL}` } };
+        refDotCell.alignment = { vertical: "middle" };
+        refDotCell.border = allBorders;
+        ws.getRow(currentRow).height = 22;
+        currentRow++;
+
+        // Texto introductorio
+        ws.mergeCells(currentRow, 1, currentRow, TOTAL_COLS);
+        const introCell = ws.getCell(currentRow, 1);
+        introCell.value = "Por medio de la presente se hace entrega de los siguientes Elementos de Dotación Personal.";
+        introCell.font = { name: "Calibri", size: 10, color: { argb: `FF${BRAND.IMPERIAL}` } };
+        introCell.alignment = { vertical: "middle", wrapText: true };
+        introCell.border = allBorders;
+        ws.getRow(currentRow).height = 22;
+        currentRow++;
+      }
+
+      // ═══════════════════════════════════════════════════
       // COLUMN HEADERS — Azul Barranca
       // ═══════════════════════════════════════════════════
       const colHeaders = [
@@ -944,6 +989,57 @@ export async function GET(req: NextRequest) {
 
         currentRow++;
         rowIndex++;
+      }
+
+      // ═══════════════════════════════════════════════════
+      // DOTACIÓN: Textos normativos (después de la tabla)
+      // ═══════════════════════════════════════════════════
+      if (tipo === "dotacion") {
+        // Espacio
+        currentRow++;
+
+        // Texto de certificación
+        ws.mergeCells(currentRow, 1, currentRow, TOTAL_COLS);
+        const certCell = ws.getCell(currentRow, 1);
+        certCell.value = "Certifico que recibo a satisfacción los elementos de dotación Personal nombrados anteriormente en buen estado, y haber sido informado de los trabajos y zonas en los que deberá utilizar dicha dotación, así como haber recibido instrucciones para su correcto uso y aceptando los siguientes compromisos.";
+        certCell.font = { name: "Calibri", size: 9, color: { argb: `FF${BRAND.IMPERIAL}` } };
+        certCell.alignment = { vertical: "middle", wrapText: true };
+        certCell.border = allBorders;
+        ws.getRow(currentRow).height = 50;
+        currentRow++;
+
+        // Compromiso a)
+        ws.mergeCells(currentRow, 1, currentRow, TOTAL_COLS);
+        const compACell = ws.getCell(currentRow, 1);
+        compACell.value = "a) Mantenerlos en buen estado y hacer buen uso de ellos, durante el tiempo de vida útil.";
+        compACell.font = { name: "Calibri", size: 9, color: { argb: `FF${BRAND.IMPERIAL}` } };
+        compACell.alignment = { vertical: "middle", wrapText: true, indent: 2 };
+        compACell.border = allBorders;
+        ws.getRow(currentRow).height = 20;
+        currentRow++;
+
+        // Compromiso b)
+        ws.mergeCells(currentRow, 1, currentRow, TOTAL_COLS);
+        const compBCell = ws.getCell(currentRow, 1);
+        compBCell.value = "b) Utilizar esta dotación durante la jornada de trabajo en las áreas cuya obligatoriedad de uso se encuentra establecido.";
+        compBCell.font = { name: "Calibri", size: 9, color: { argb: `FF${BRAND.IMPERIAL}` } };
+        compBCell.alignment = { vertical: "middle", wrapText: true, indent: 2 };
+        compBCell.border = allBorders;
+        ws.getRow(currentRow).height = 20;
+        currentRow++;
+
+        // Espacio antes de nota legal
+        currentRow++;
+
+        // Nota legal — Ley 11/84 Art. 230
+        ws.mergeCells(currentRow, 1, currentRow, TOTAL_COLS);
+        const legalCell = ws.getCell(currentRow, 1);
+        legalCell.value = "De acuerdo a lo estipulado en la ley 11/84. Art. 230 establece el deber de todo empleador de suministrar cada cuatro meses, en forma gratuita una dotación (un par de zapatos y un vestido de labor) cuando tenga a su cargo uno o más trabajadores permanentes, cuya remuneración mensual sea hasta dos veces el salario mínimo más alto vigente, y que haya cumplido más de tres meses al servicio de este.";
+        legalCell.font = { name: "Calibri", size: 8, bold: true, color: { argb: `FF${BRAND.IMPERIAL}` } };
+        legalCell.alignment = { vertical: "middle", wrapText: true };
+        legalCell.border = allBorders;
+        ws.getRow(currentRow).height = 45;
+        currentRow++;
       }
 
       // ═══════════════════════════════════════════════════
