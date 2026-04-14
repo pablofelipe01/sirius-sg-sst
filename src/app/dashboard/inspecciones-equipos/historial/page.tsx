@@ -55,6 +55,20 @@ interface DetalleEquipo {
   equipoCodigo: string;
 }
 
+// Mapeo de categoría → código de formato oficial (para menú PDF)
+const FORMATO_PDF_POR_CATEGORIA: Record<string, { codigo: string; nombre: string; icono: string }> = {
+  "Extintor":     { codigo: "FT-SST-033", nombre: "Extintores",    icono: "🧯" },
+  "Botiquin":     { codigo: "FT-SST-032", nombre: "Botiquines",    icono: "🩹" },
+  "Botiquín":     { codigo: "FT-SST-032", nombre: "Botiquines",    icono: "🩹" },
+  "Camilla":      { codigo: "FT-SST-037", nombre: "Camillas",      icono: "🛏️" },
+  "Kit Derrames": { codigo: "FT-SST-050", nombre: "Kit Derrames",  icono: "⚠️" },
+};
+
+// Normaliza variantes de "Botiquín" para deduplicar en el menú
+function normalizarCatUI(cat: string): string {
+  return cat === "Botiquín" ? "Botiquin" : cat;
+}
+
 // Estilos para estados
 const estadoStyles: Record<
   string,
@@ -385,6 +399,10 @@ export default function HistorialInspeccionesEquiposPage() {
   const [exportingId, setExportingId] = useState<string | null>(null);
   const [exportingPdfId, setExportingPdfId] = useState<string | null>(null);
 
+  // Menú PDF por categoría
+  const [pdfMenuOpenId, setPdfMenuOpenId] = useState<string | null>(null);
+  const [exportingPdfCat, setExportingPdfCat] = useState<{ id: string; categoria: string } | null>(null);
+
   // Fetch inspecciones
   const fetchInspecciones = useCallback(async () => {
     setLoading(true);
@@ -583,6 +601,38 @@ export default function HistorialInspeccionesEquiposPage() {
       alert(err instanceof Error ? err.message : "Error al exportar PDF");
     } finally {
       setExportingPdfId(null);
+    }
+  }
+
+  // ── Exportar PDF individual por categoría ─────────────
+  async function handleExportPdfCategoria(insp: InspeccionResumen, categoria: string) {
+    setExportingPdfCat({ id: insp.id, categoria });
+    try {
+      const res = await fetch("/api/inspecciones-equipos/exportar-pdf", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ idInspeccion: insp.idInspeccion, categoria }),
+      });
+
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.message || "Error al exportar PDF");
+      }
+
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `Inspeccion_${categoria.replace(/\s+/g, "_")}_${insp.idInspeccion}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error(err);
+      alert(err instanceof Error ? err.message : "Error al exportar PDF");
+    } finally {
+      setExportingPdfCat(null);
     }
   }
 
@@ -796,11 +846,22 @@ export default function HistorialInspeccionesEquiposPage() {
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
-                          handleExportPdfIndividual(insp);
+                          if (pdfMenuOpenId === insp.id) {
+                            setPdfMenuOpenId(null);
+                          } else {
+                            setPdfMenuOpenId(insp.id);
+                            if (!detallesCargados[insp.id]) {
+                              loadDetalle(insp.id);
+                            }
+                          }
                         }}
                         disabled={exportingPdfId === insp.id}
-                        className="p-1.5 rounded-lg bg-red-500/15 border border-red-400/25 text-red-400 hover:bg-red-500/25 transition-all disabled:opacity-50 cursor-pointer"
-                        title="Exportar PDF"
+                        className={`p-1.5 rounded-lg border text-red-400 hover:bg-red-500/25 transition-all disabled:opacity-50 cursor-pointer ${
+                          pdfMenuOpenId === insp.id
+                            ? "bg-red-500/30 border-red-400/50"
+                            : "bg-red-500/15 border-red-400/25"
+                        }`}
+                        title="Exportar PDF por tipo de equipo"
                       >
                         {exportingPdfId === insp.id ? (
                           <Loader2 className="w-4 h-4 animate-spin" />
@@ -817,6 +878,59 @@ export default function HistorialInspeccionesEquiposPage() {
                       </div>
                     </div>
                   </div>
+
+                  {/* Menú PDF por tipo de equipo */}
+                  {pdfMenuOpenId === insp.id && (
+                    <div className="border-t border-red-400/20 bg-red-500/5 px-4 py-3">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-[11px] text-white/40 shrink-0">Descargar informe por tipo:</span>
+                        {loadingDetalle === insp.id ? (
+                          <Loader2 className="w-4 h-4 text-red-400 animate-spin" />
+                        ) : !detallesCargados[insp.id] || detallesCargados[insp.id].length === 0 ? (
+                          <span className="text-xs text-white/40 italic">Sin detalles disponibles</span>
+                        ) : (
+                          (() => {
+                            const categorias = [
+                              ...new Set(
+                                detallesCargados[insp.id].map((d) => normalizarCatUI(d.categoria)).filter(Boolean)
+                              ),
+                            ];
+                            return categorias.map((cat) => {
+                              const fmt = FORMATO_PDF_POR_CATEGORIA[cat] ?? {
+                                codigo: "FT-SST-065",
+                                nombre: cat,
+                                icono: "📄",
+                              };
+                              const isLoadingThis =
+                                exportingPdfCat?.id === insp.id &&
+                                normalizarCatUI(exportingPdfCat.categoria) === cat;
+                              return (
+                                <button
+                                  key={cat}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleExportPdfCategoria(insp, cat);
+                                  }}
+                                  disabled={!!exportingPdfCat}
+                                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-red-500/15 border border-red-400/25 text-red-300 text-xs font-medium hover:bg-red-500/25 transition-all disabled:opacity-50 cursor-pointer"
+                                >
+                                  {isLoadingThis ? (
+                                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                  ) : (
+                                    <FileDown className="w-3.5 h-3.5" />
+                                  )}
+                                  <span>
+                                    {fmt.icono} {fmt.nombre}
+                                  </span>
+                                  <span className="text-red-400/60 text-[10px]">{fmt.codigo}</span>
+                                </button>
+                              );
+                            });
+                          })()
+                        )}
+                      </div>
+                    </div>
+                  )}
 
                   {/* Detalle expandido */}
                   {isExpanded && (
