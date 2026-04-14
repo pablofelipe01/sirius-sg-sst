@@ -113,6 +113,24 @@ interface InspeccionCompleta {
 }
 
 // ══════════════════════════════════════════════════════════
+// Mapeo de categoría → formato oficial
+// ══════════════════════════════════════════════════════════
+const FORMATO_POR_CATEGORIA: Record<string, { codigo: string; nombre: string }> = {
+  "Extintor":     { codigo: "FT-SST-033", nombre: "Formato de Inspección de Extintor" },
+  "Botiquin":     { codigo: "FT-SST-032", nombre: "Formato de Inspección de Botiquín" },
+  "Camilla":      { codigo: "FT-SST-037", nombre: "Formato de Inspección de Camilla" },
+  "Kit Derrames": { codigo: "FT-SST-050", nombre: "Formato de Inspección de Kit de Derrames" },
+};
+const FORMATO_DEFAULT = {
+  codigo: "FT-SST-065",
+  nombre: "Formato Inspección de Equipos de Emergencia",
+};
+
+function normalizarCategoria(cat: string): string {
+  return cat === "Botiquín" ? "Botiquin" : cat;
+}
+
+// ══════════════════════════════════════════════════════════
 // Colores (RGB)
 // ══════════════════════════════════════════════════════════
 const COLORS = {
@@ -274,7 +292,24 @@ function areaToSlug(area: string): string {
 // ══════════════════════════════════════════════════════════
 // Generar PDF de inspección
 // ══════════════════════════════════════════════════════════
-function generarPDFInspeccion(insp: InspeccionCompleta, logoBase64: string | null): Buffer {
+function generarPDFInspeccion(
+  insp: InspeccionCompleta,
+  logoBase64: string | null,
+  categoriaFiltro?: string,
+): Buffer {
+  // Filtrar detalles por categoría si se especifica
+  const detallesFiltrados = categoriaFiltro
+    ? insp.detalles.filter(
+        (d) => normalizarCategoria(d.categoria) === normalizarCategoria(categoriaFiltro),
+      )
+    : insp.detalles;
+  const insp_ = categoriaFiltro ? { ...insp, detalles: detallesFiltrados } : insp;
+
+  // Formato oficial según la categoría
+  const formato = categoriaFiltro
+    ? (FORMATO_POR_CATEGORIA[normalizarCategoria(categoriaFiltro)] ?? FORMATO_DEFAULT)
+    : FORMATO_DEFAULT;
+
   const doc = new jsPDF({
     orientation: "landscape",
     unit: "mm",
@@ -327,13 +362,13 @@ function generarPDFInspeccion(insp: InspeccionCompleta, logoBase64: string | nul
   doc.rect(empresaX, currentY + 2 * headerHeight / 3, empresaWidth, headerHeight / 3, "S");
   doc.setFont("helvetica", "bold");
   doc.setFontSize(7);
-  doc.text("FORMATO INSPECCIÓN DE EQUIPOS DE EMERGENCIA", empresaX + empresaWidth / 2, currentY + 2 * headerHeight / 3 + 5, { align: "center" });
+  doc.text(formato.nombre.toUpperCase(), empresaX + empresaWidth / 2, currentY + 2 * headerHeight / 3 + 5, { align: "center" });
 
   // Columna derecha: Código + Versión + Fecha
   const codigoX = margin + logoWidth + empresaWidth;
   doc.rect(codigoX, currentY, codigoWidth, headerHeight / 3, "S");
   doc.setFontSize(8);
-  doc.text("CÓDIGO: FT-SST-065", codigoX + codigoWidth / 2, currentY + 5, { align: "center" });
+  doc.text(`CÓDIGO: ${formato.codigo}`, codigoX + codigoWidth / 2, currentY + 5, { align: "center" });
 
   doc.rect(codigoX, currentY + headerHeight / 3, codigoWidth, headerHeight / 3, "S");
   doc.setFont("helvetica", "normal");
@@ -410,7 +445,7 @@ function generarPDFInspeccion(insp: InspeccionCompleta, logoBase64: string | nul
 
   // Agrupar detalles por área
   const detallesPorArea: Record<string, DetalleEquipo[]> = {};
-  insp.detalles.forEach((det) => {
+  insp_.detalles.forEach((det) => {
     const area = det.area || "Sin Área";
     if (!detallesPorArea[area]) detallesPorArea[area] = [];
     detallesPorArea[area].push(det);
@@ -976,7 +1011,7 @@ function generarPDFInspeccion(insp: InspeccionCompleta, logoBase64: string | nul
 // ══════════════════════════════════════════════════════════
 export async function POST(request: NextRequest) {
   try {
-    const { idInspeccion } = await request.json();
+    const { idInspeccion, categoria } = await request.json();
 
     const {
       inspEquiposFields,
@@ -1145,9 +1180,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const pdfBuffer = generarPDFInspeccion(targetInsp, logoBase64);
+    const pdfBuffer = generarPDFInspeccion(targetInsp, logoBase64, categoria || undefined);
+    const catSlug = categoria ? `_${categoria.replace(/\s+/g, "_")}` : "";
     const filename = idInspeccion
-      ? `Inspeccion_Equipos_${idInspeccion}.pdf`
+      ? `Inspeccion${catSlug}_${idInspeccion}.pdf`
       : `Inspecciones_Equipos_${new Date().toISOString().split("T")[0]}.pdf`;
 
     return new NextResponse(new Uint8Array(pdfBuffer), {
