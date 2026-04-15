@@ -6,7 +6,7 @@ Sistema de Gestión de Seguridad y Salud en el Trabajo - Plataforma integral par
 ![React](https://img.shields.io/badge/React-19.2.3-blue)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.x-blue)
 ![Tailwind CSS](https://img.shields.io/badge/Tailwind-4.0-38bdf8)
- 
+   
 ## Descripción
 
 Sirius SG-SST es una aplicación web moderna y completa para la gestión del Sistema de Gestión de Seguridad y Salud en el Trabajo, diseñada específicamente para cumplir con la normativa colombiana. La plataforma integra todos los aspectos del SG-SST en un solo sistema, desde capacitaciones y evaluaciones hasta inspecciones y gestión de EPP.
