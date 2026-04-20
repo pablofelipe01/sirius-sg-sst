@@ -694,10 +694,10 @@ export async function GET(req: NextRequest) {
           doc.text("Evidencias fotográficas:", MARGIN, y);
           y += 5;
 
-          // Layout: hasta 3 fotos en fila
-          const IMG_SIZE = 50;
-          const GAP = 5;
-          const totalImgW = ent.fotoUrls.length * IMG_SIZE + (ent.fotoUrls.length - 1) * GAP;
+          // Layout: hasta 3 fotos en fila, ocupando el ancho disponible
+          const IMG_GAP = 4;
+          const IMG_SIZE = Math.floor((CONTENT_W - IMG_GAP * (ent.fotoUrls.length - 1)) / ent.fotoUrls.length);
+          const totalImgW = ent.fotoUrls.length * IMG_SIZE + (ent.fotoUrls.length - 1) * IMG_GAP;
           let imgX = MARGIN + (CONTENT_W - totalImgW) / 2; // centrar
           if (imgX < MARGIN) imgX = MARGIN;
 
@@ -727,7 +727,7 @@ export async function GET(req: NextRequest) {
               doc.setTextColor(...BRAND.GRIS_TEXTO);
               doc.text("Imagen no\ndisponible", imgX + IMG_SIZE / 2, y + IMG_SIZE / 2, { align: "center" });
             }
-            imgX += IMG_SIZE + GAP;
+            imgX += IMG_SIZE + IMG_GAP;
           }
 
           y += IMG_SIZE + 6;

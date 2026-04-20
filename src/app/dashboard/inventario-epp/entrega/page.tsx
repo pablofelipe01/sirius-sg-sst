@@ -263,6 +263,7 @@ export default function EntregaEPPPage() {
   // Datos de entrega
   const [notas, setNotas] = useState("");
   const [motivo, setMotivo] = useState(MOTIVOS[0]);
+  const [motivoOtro, setMotivoOtro] = useState("");
 
   // Fotos evidencia — Dotación (0-3)
   const [fotosDotacion, setFotosDotacion] = useState<File[]>([]);
@@ -456,7 +457,7 @@ export default function EntregaEPPPage() {
         responsable: "Coordinador SST",
         responsableId: user?.idEmpleado || "",
         observaciones: notas,
-        motivo,
+        motivo: motivo === "Otro" ? (motivoOtro.trim() || "Otro") : motivo,
         fechaEntrega: fechaHoy,
       };
 
@@ -617,6 +618,7 @@ export default function EntregaEPPPage() {
     setBeneficiarios([]);
     setNotas("");
     setMotivo(MOTIVOS[0]);
+    setMotivoOtro("");
     setFotosDotacion([]);
     setFotosPreviewsDotacion([]);
     setFotosEpp([]);
@@ -1223,6 +1225,15 @@ export default function EntregaEPPPage() {
                     </option>
                   ))}
                 </select>
+                {motivo === "Otro" && (
+                  <input
+                    type="text"
+                    placeholder="Escriba el motivo de entrega…"
+                    value={motivoOtro}
+                    onChange={(e) => setMotivoOtro(e.target.value)}
+                    className="w-full mt-2 px-4 py-2.5 rounded-xl bg-white/10 border border-white/15 text-white text-sm placeholder:text-white/30 focus:outline-none focus:border-orange-400/50 transition-all"
+                  />
+                )}
               </div>
 
               {/* Notas */}
