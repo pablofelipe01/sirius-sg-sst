@@ -378,6 +378,20 @@ const allBorders: Partial<ExcelJS.Borders> = {
 };
 
 // ══════════════════════════════════════════════════════════
+// Helper: Descarga una imagen como buffer desde URL
+// ══════════════════════════════════════════════════════════
+async function fetchImageBuffer(url: string): Promise<Buffer | null> {
+  try {
+    const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
+    if (!res.ok) return null;
+    const arrayBuffer = await res.arrayBuffer();
+    return Buffer.from(arrayBuffer);
+  } catch {
+    return null;
+  }
+}
+
+// ══════════════════════════════════════════════════════════
 // GET /api/entregas-epp/exportar
 //
 // Genera archivo Excel (.xlsx) con el formato FT-SST-029
@@ -516,6 +530,7 @@ export async function GET(req: NextRequest) {
       documento: string;
       idEmpleado: string;
       rows: EntregaRow[];
+      fotoUrls: string[];  // URLs de evidencia fotográfica de la última entrega
     }
 
     const empleadoGroups = new Map<string, EmpleadoGroup>();
@@ -538,6 +553,7 @@ export async function GET(req: NextRequest) {
           documento: empInfo.documento,
           idEmpleado: idEmp,
           rows: [],
+          fotoUrls: [],
         });
       }
       const group = empleadoGroups.get(idEmp)!;
@@ -565,6 +581,8 @@ export async function GET(req: NextRequest) {
       }
 
       // Get detalles for this entrega — la firma va en TODAS las filas
+      // Registrar conteo antes para detectar si esta entrega aporta filas al filtro actual
+      const rowCountBefore = group.rows.length;
       const dLinks = (f[entregasFields.DETALLE_LINK] as string[]) || [];
       if (dLinks.length === 0) {
         group.rows.push({
@@ -597,6 +615,16 @@ export async function GET(req: NextRequest) {
             estado,
             signatureDataUrl, // Firma en TODAS las filas del detalle
           });
+        }
+      }
+
+      // Fotos: solo de la entrega más reciente que aporte filas al filtro de tipo actual.
+      // Esto evita que fotos de Dotación aparezcan en el reporte de EPP y viceversa.
+      if (group.rows.length > rowCountBefore && group.fotoUrls.length === 0) {
+        const fotoField = f[entregasFields.FOTO_EVIDENCIA_URL];
+        if (Array.isArray(fotoField) && fotoField.length > 0) {
+          const urls = (fotoField as { url: string }[]).map((a) => a.url).filter(Boolean);
+          if (urls.length > 0) group.fotoUrls.push(...urls);
         }
       }
     }
@@ -1039,6 +1067,65 @@ export async function GET(req: NextRequest) {
         legalCell.alignment = { vertical: "middle", wrapText: true };
         legalCell.border = allBorders;
         ws.getRow(currentRow).height = 45;
+        currentRow++;
+      }
+
+      // ═══════════════════════════════════════════════════
+      // FOTOS DE EVIDENCIA — fila dedicada con imágenes
+      // ═══════════════════════════════════════════════════
+      if (group.fotoUrls.length > 0) {
+        const FOTO_ROW_HEIGHT = 300;
+        // Ancho total del documento en unidades de columna ExcelJS
+        // Col A=34, B=14, C=24, D=18, E=50 → Total=140 unidades
+        // Se usa 1/4 del ancho total para que las imágenes no queden demasiado anchas
+        const TOTAL_WIDTH_UNITS = 35; // 140 / 4
+        const PX_PER_UNIT = 7; // aprox px por unidad de ancho en ExcelJS
+
+        // Fila de etiqueta (fusionada)
+        ws.mergeCells(currentRow, 1, currentRow, TOTAL_COLS);
+        const fotoLabelCell = ws.getCell(currentRow, 1);
+        fotoLabelCell.value = `Evidencias fotográficas (${group.fotoUrls.length})`;
+        fotoLabelCell.font = { name: "Calibri", size: 9, bold: true, color: { argb: `FF${BRAND.AZUL_BARRANCA}` } };
+        fotoLabelCell.alignment = { vertical: "middle", indent: 1 };
+        fotoLabelCell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: `FF${BRAND.COTILEDON}` } };
+        fotoLabelCell.border = allBorders;
+        ws.getRow(currentRow).height = 18;
+        currentRow++;
+
+        // Fila con las fotos — fusionar todas las columnas para aprovechar el ancho completo
+        const fotoDataRow = currentRow;
+        ws.mergeCells(fotoDataRow, 1, fotoDataRow, TOTAL_COLS);
+        ws.getRow(fotoDataRow).height = FOTO_ROW_HEIGHT;
+        const fotoCellBase = ws.getCell(fotoDataRow, 1);
+        fotoCellBase.fill = { type: "pattern", pattern: "solid", fgColor: { argb: `FF${BRAND.WHITE}` } };
+        fotoCellBase.border = allBorders;
+
+        // Distribuir imágenes equitativamente a lo ancho (máximo 3)
+        const maxFotos = Math.min(group.fotoUrls.length, 3);
+        const imgW = Math.floor((TOTAL_WIDTH_UNITS * PX_PER_UNIT) / maxFotos) - 8;
+        const imgH = FOTO_ROW_HEIGHT - 8;
+        const unitWidth = TOTAL_WIDTH_UNITS / maxFotos;
+
+        for (let i = 0; i < maxFotos; i++) {
+          const buffer = await fetchImageBuffer(group.fotoUrls[i]);
+          if (!buffer) continue;
+
+          // Detectar tipo de imagen por magic bytes
+          let ext: "jpeg" | "png" | "gif" = "jpeg";
+          if (buffer[0] === 0x89 && buffer[1] === 0x50) ext = "png";
+          else if (buffer[0] === 0x47 && buffer[1] === 0x49) ext = "gif";
+
+          const imgId = workbook.addImage({ base64: buffer.toString("base64"), extension: ext });
+          // Posición horizontal: imagen i ocupa la i-ésima porción del ancho total
+          const colStart = i * unitWidth + 0.1;
+
+          ws.addImage(imgId, {
+            tl: { col: colStart, row: fotoDataRow - 1 + 0.04 } as unknown as ExcelJS.Anchor,
+            ext: { width: imgW, height: imgH },
+            editAs: "oneCell",
+          });
+        }
+
         currentRow++;
       }
 
