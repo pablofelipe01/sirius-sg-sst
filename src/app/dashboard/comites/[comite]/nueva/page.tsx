@@ -333,9 +333,6 @@ export default function NuevaActaPage({
           <section className="bg-white/5 backdrop-blur-xl rounded-2xl border border-white/10 p-6">
             <h2 className="text-lg font-semibold text-white mb-4">Datos generales</h2>
             <div className="grid md:grid-cols-3 gap-4">
-              <Field label="N° de acta (opcional)">
-                <input type="text" value={numeroActa} onChange={(e) => setNumeroActa(e.target.value)} placeholder="auto" className="input" />
-              </Field>
               <Field label="Mes evaluado">
                 <input type="text" value={mesEvaluado} onChange={(e) => setMesEvaluado(e.target.value)} className="input" />
               </Field>

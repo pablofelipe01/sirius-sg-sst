@@ -14,6 +14,7 @@ import {
   getSGSSTHeaders,
   getSGSSTUrl,
 } from "@/infrastructure/config/airtableSGSST";
+import { encryptAES, decryptAES } from "@/lib/firmaCrypto";
 import type {
   ActaCocolab,
   ActaCompleta,
@@ -229,15 +230,16 @@ async function fetchMiembrosByRecordIds(
 // ══════════════════════════════════════════════════════════
 async function fetchAsistenciasByActa(
   comite: ComiteTipo,
-  actaRecordId: string
+  actaIdText: string   // Valor del campo ID del acta (ej. "001-2026"), no el recordId interno de Airtable
 ): Promise<AsistenteActa[]> {
   const FA = airtableSGSSTConfig.asistenciaComitesFields;
   const linkField =
     comite === "COPASST" ? FA.ACTA_COPASST_LINK : FA.ACTA_COCOLAB_LINK;
 
-  // Buscar registros de asistencia que apunten a esta acta
+  // ARRAYJOIN sobre un campo de vínculo devuelve los valores del campo primario
+  // del registro vinculado (ej. "001-2026"), NO el recordId interno de Airtable.
   const formula = encodeURIComponent(
-    `FIND('${actaRecordId}', ARRAYJOIN({${linkField}})) > 0`
+    `FIND('${escapeFormulaValue(actaIdText)}', ARRAYJOIN({${linkField}})) > 0`
   );
   const url = `${getSGSSTUrl(airtableSGSSTConfig.asistenciaComitesTableId)}?filterByFormula=${formula}&returnFieldsByFieldId=true&pageSize=100`;
 
@@ -258,11 +260,30 @@ async function fetchAsistenciasByActa(
     return data.records.map((r): AsistenteActa => {
       const miembroRecordId = (r.fields[FA.MIEMBRO_LINK] as string[])?.[0] || "";
       const miembro = miembrosMap.get(miembroRecordId);
+
+      // Descifrar firma — con fallback a texto plano para registros anteriores
+      const rawFirma = (r.fields[FA.FIRMA] as string) || null;
+      let firma: string | null = null;
+      if (rawFirma) {
+        if (rawFirma.startsWith("data:")) {
+          // Registro antiguo: guardado sin cifrar
+          firma = rawFirma;
+        } else {
+          try {
+            firma = decryptAES(rawFirma);
+          } catch {
+            // Si falla el descifrado, devolver null para no mostrar datos corruptos
+            console.warn("[comites] No se pudo descifrar firma de asistente:", miembroRecordId);
+            firma = null;
+          }
+        }
+      }
+
       return {
         id: r.id,
         recordId: miembroRecordId,
         asistio: !!r.fields[FA.ASISTIO],
-        firma: (r.fields[FA.FIRMA] as string) || null,
+        firma,
         fechaFirma: (r.fields[FA.FECHA_FIRMA] as string) || null,
         observaciones: (r.fields[FA.OBSERVACIONES] as string) || null,
         nombre: miembro?.nombre,
@@ -470,11 +491,14 @@ export async function obtenerActaPorId(
   );
   if (data.records.length === 0) return null;
   const rec = data.records[0];
+  const recId = rec.id;
   const acta = mapCabeceraToDomain(comite, rec);
 
   // Resolver asistentes (desde tabla intermedia asistencia_comites)
+  // ARRAYJOIN en Airtable devuelve el valor del campo primario (idActa) no el recordId interno.
+  const actaTextId = acta.idActa || recId;
   try {
-    acta.asistentes = await fetchAsistenciasByActa(comite, rec.id);
+    acta.asistentes = await fetchAsistenciasByActa(comite, actaTextId);
   } catch (e) {
     console.error("[comites] error resolviendo asistentes:", e);
   }
@@ -760,7 +784,9 @@ export async function crearActa(
     );
   }
 
-  return { id: idActa, idActa, recordId, numeroActa };
+  // idActa generado no se persiste cuando F.ID === F.NUMERO_ACTA (mismo field en Airtable).
+  // Usar numeroActa como identificador de ruta, que sí queda almacenado.
+  return { id: numeroActa, idActa: numeroActa, recordId, numeroActa };
 }
 
 export async function actualizarActa(
@@ -787,7 +813,7 @@ export async function actualizarActa(
     const FA = airtableSGSSTConfig.asistenciaComitesFields;
 
     // 1) Eliminar registros antiguos de asistencia
-    const oldAsistencias = await fetchAsistenciasByActa(comite, recordId);
+    const oldAsistencias = await fetchAsistenciasByActa(comite, existing.idActa || recordId);
     const oldIds = oldAsistencias.map((a) => a.id!).filter(Boolean);
     if (oldIds.length) {
       await deleteRecords(airtableSGSSTConfig.asistenciaComitesTableId, oldIds);
@@ -999,6 +1025,9 @@ export async function firmarAsistencia(
     throw new Error("Debe marcar asistencia antes de firmar");
   }
 
+  // Encriptar firma antes de almacenar
+  const firmaEncriptada = encryptAES(firmaDataUrl);
+
   // Actualizar firma
   const FA = airtableSGSSTConfig.asistenciaComitesFields;
   await airtableFetch(
@@ -1010,7 +1039,7 @@ export async function firmarAsistencia(
           {
             id: asistencia.id,
             fields: cleanFields({
-              [FA.FIRMA]: firmaDataUrl,
+              [FA.FIRMA]: firmaEncriptada,
               [FA.FECHA_FIRMA]: new Date().toISOString(),
               [FA.ASISTIO]: true, // Confirmar asistencia al firmar
             }),

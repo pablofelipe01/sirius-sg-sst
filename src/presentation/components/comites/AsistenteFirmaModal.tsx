@@ -38,16 +38,25 @@ export default function AsistenteFirmaModal({
     if (!c) return;
     const ctx = c.getContext("2d")!;
     let drawing = false;
+    const getPos = (e: PointerEvent) => {
+      const r = c.getBoundingClientRect();
+      const scaleX = c.width / r.width;
+      const scaleY = c.height / r.height;
+      return {
+        x: (e.clientX - r.left) * scaleX,
+        y: (e.clientY - r.top) * scaleY,
+      };
+    };
     const start = (e: PointerEvent) => {
       drawing = true;
-      const r = c.getBoundingClientRect();
+      const { x, y } = getPos(e);
       ctx.beginPath();
-      ctx.moveTo(e.clientX - r.left, e.clientY - r.top);
+      ctx.moveTo(x, y);
     };
     const move = (e: PointerEvent) => {
       if (!drawing) return;
-      const r = c.getBoundingClientRect();
-      ctx.lineTo(e.clientX - r.left, e.clientY - r.top);
+      const { x, y } = getPos(e);
+      ctx.lineTo(x, y);
       ctx.lineWidth = 2;
       ctx.strokeStyle = "#0a0a0a";
       ctx.lineCap = "round";

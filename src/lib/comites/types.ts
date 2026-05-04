@@ -138,14 +138,14 @@ export type ActaCompleta = ActaCopasst | ActaCocolab;
 export const FORMATO_COMITE = {
   COPASST: {
     codigo: "FT-SST-008",
-    version: "001",
-    fechaEdicion: "3-10-2023",
+    version: "002",
+    fechaEdicion: "01-04-2026",
     nombre: "ACTA DE REUNIÓN COMITÉ PARITARIO DE SEGURIDAD Y SALUD EN EL TRABAJO",
   },
   COCOLAB: {
     codigo: "F-TSST-017",
-    version: "001",
-    fechaEdicion: "3-10-2023",
+    version: "002",
+    fechaEdicion: "01-04-2026",
     nombre: "ACTA DE REUNIÓN COMITÉ DE CONVIVENCIA LABORAL",
   },
 } as const;

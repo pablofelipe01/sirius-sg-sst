@@ -89,7 +89,6 @@ export default function DetalleActaPage({
   const router = useRouter();
   const [acta, setActa] = useState<Acta | null>(null);
   const [loading, setLoading] = useState(true);
-  const [showFirma, setShowFirma] = useState(false);
   const [modalAsistente, setModalAsistente] = useState<{
     recordId: string;
     nombre: string;
@@ -383,33 +382,6 @@ export default function DetalleActaPage({
         </Card>
       )}
 
-      {/* Firma */}
-      {acta.estado === "borrador" && (
-        <div className="mt-6">
-          <button
-            onClick={() => setShowFirma(true)}
-            className="w-full inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white py-3 font-semibold transition-colors"
-          >
-            <ShieldCheck className="w-5 h-5" />
-            Firmar acta (Presidente + {comite === "cocolab" ? "Secretaria" : "Secretario(a)"})
-          </button>
-        </div>
-      )}
-
-      {showFirma && (
-        <FirmaModal
-          comite={comite}
-          actaId={id}
-          presidenteSugerido={presidente}
-          secretarioSugerido={secretario}
-          onClose={() => setShowFirma(false)}
-          onFirmado={() => {
-            setShowFirma(false);
-            cargar();
-          }}
-        />
-      )}
-
       {modalAsistente && (
         <AsistenteFirmaModal
           isOpen={true}
@@ -462,8 +434,8 @@ function Card({
 function DL({ items }: { items: Array<[string, string | undefined | null]> }) {
   return (
     <dl className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-2 text-sm">
-      {items.map(([k, v]) => (
-        <div key={k} className="flex flex-col">
+      {items.map(([k, v], idx) => (
+        <div key={idx} className="flex flex-col">
           <dt className="text-white/50 text-xs">{k}</dt>
           <dd className="text-white/90">{v || "—"}</dd>
         </div>
