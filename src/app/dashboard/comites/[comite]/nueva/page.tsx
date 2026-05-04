@@ -132,6 +132,9 @@ export default function NuevaActaPage({
   // ── Compromisos ──
   const [compromisos, setCompromisos] = useState<CompromisoForm[]>([]);
 
+  // ── Personal (para dropdown de responsable en compromisos) ──
+  const [personal, setPersonal] = useState<{ id: string; nombreCompleto: string }[]>([]);
+
   // ── Miembros del comité ──
   const [miembros, setMiembros] = useState<Miembro[]>([]);
   const [loadingMiembros, setLoadingMiembros] = useState(true);
@@ -173,6 +176,23 @@ export default function NuevaActaPage({
       .catch(() => setMiembros([]))
       .finally(() => setLoadingMiembros(false));
   }, [comite]);
+
+  // Cargar personal de Sirius Nómina Core (para responsable de compromisos)
+  useEffect(() => {
+    fetch("/api/personal")
+      .then((r) => r.json())
+      .then((j) => {
+        if (j.success && Array.isArray(j.data)) {
+          setPersonal(
+            j.data.map((p: Record<string, unknown>) => ({
+              id: String(p.id || ""),
+              nombreCompleto: String(p.nombreCompleto || ""),
+            }))
+          );
+        }
+      })
+      .catch(() => setPersonal([]));
+  }, []);
 
   // Cargar capacitaciones ejecutadas del mes (solo COPASST)
   useEffect(() => {
@@ -612,14 +632,18 @@ export default function NuevaActaPage({
                     onError={setErrorMsg}
                   />
                 </div>
-                <div className="w-56 flex items-center gap-1">
-                  <input placeholder="Responsable" value={c.responsable} onChange={(e) => set({ ...c, responsable: e.target.value })} className="input flex-1" />
-                  <MicTranscribeButton
-                    variant="icon"
-                    onTranscribed={(t) => set({ ...c, responsable: appendTranscripcion(c.responsable, t) })}
-                    onError={setErrorMsg}
-                  />
-                </div>
+                <select
+                  value={c.responsable}
+                  onChange={(e) => set({ ...c, responsable: e.target.value })}
+                  className="input w-56"
+                >
+                  <option value="" className="bg-slate-900">Seleccionar responsable...</option>
+                  {personal.map((p) => (
+                    <option key={p.id} value={p.nombreCompleto} className="bg-slate-900">
+                      {p.nombreCompleto}
+                    </option>
+                  ))}
+                </select>
                 <input type="date" value={c.fechaLimite} onChange={(e) => set({ ...c, fechaLimite: e.target.value })} className="input w-44" />
               </>
             )}
