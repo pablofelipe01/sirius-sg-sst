@@ -1662,8 +1662,8 @@ export default function InspeccionEquiposPage() {
   // Guardar equipo (crear o actualizar)
   const guardarEquipo = async () => {
     // Validar campos requeridos
-    if (!formEquipo.codigo?.trim() || !formEquipo.nombre?.trim() || !formEquipo.categoria || !formEquipo.area) {
-      setErrorMessage("Código, nombre, categoría y área son requeridos");
+    if (!formEquipo.nombre?.trim() || !formEquipo.categoria || !formEquipo.area) {
+      setErrorMessage("Nombre, categoría y área son requeridos");
       return;
     }
 
@@ -3275,32 +3275,24 @@ export default function InspeccionEquiposPage() {
 
             {/* Formulario */}
             <div className="p-4 space-y-4">
-              {/* Código y Nombre */}
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-medium text-white/70 mb-1">
-                    Código <span className="text-red-400">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    value={formEquipo.codigo || ""}
-                    onChange={(e) => setFormEquipo({ ...formEquipo, codigo: e.target.value })}
-                    placeholder="Ej: EXT-001"
-                    className="w-full px-3 py-2 text-sm rounded-lg bg-white/5 border border-white/10 text-white placeholder-white/30 focus:outline-none focus:border-red-500/50"
-                  />
+              {/* Código (solo lectura al editar) / Nombre */}
+              {equipoEditando ? (
+                <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-white/5 border border-white/10">
+                  <span className="text-xs font-medium text-white/50">Código:</span>
+                  <span className="text-sm font-mono text-white/80">{formEquipo.codigo}</span>
                 </div>
-                <div>
-                  <label className="block text-xs font-medium text-white/70 mb-1">
-                    Nombre <span className="text-red-400">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    value={formEquipo.nombre || ""}
-                    onChange={(e) => setFormEquipo({ ...formEquipo, nombre: e.target.value })}
-                    placeholder="Ej: Extintor ABC 10lb"
-                    className="w-full px-3 py-2 text-sm rounded-lg bg-white/5 border border-white/10 text-white placeholder-white/30 focus:outline-none focus:border-red-500/50"
-                  />
-                </div>
+              ) : null}
+              <div>
+                <label className="block text-xs font-medium text-white/70 mb-1">
+                  Nombre <span className="text-red-400">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={formEquipo.nombre || ""}
+                  onChange={(e) => setFormEquipo({ ...formEquipo, nombre: e.target.value })}
+                  placeholder="Ej: Extintor ABC 10lb"
+                  className="w-full px-3 py-2 text-sm rounded-lg bg-white/5 border border-white/10 text-white placeholder-white/30 focus:outline-none focus:border-red-500/50"
+                />
               </div>
 
               {/* Categoría y Área */}

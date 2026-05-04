@@ -104,6 +104,21 @@ export async function GET(request: NextRequest) {
   }
 }
 
+const CATEGORIA_PREFIJOS: Record<string, string> = {
+  "Extintor": "EXT",
+  "Botiquin": "BOT",
+  "Camilla": "CAM",
+  "Kit Derrames": "KIT",
+};
+
+function generateEquipoCode(categoria: string): string {
+  const prefix = CATEGORIA_PREFIJOS[categoria] || "EQP";
+  const now = new Date();
+  const fecha = now.toLocaleDateString("en-CA", { timeZone: "America/Bogota" }).replace(/-/g, "");
+  const rand = Math.random().toString(36).substring(2, 6).toUpperCase();
+  return `${prefix}-${fecha}-${rand}`;
+}
+
 /**
  * POST /api/equipos-emergencia
  * Crea un nuevo equipo de emergencia.
@@ -115,16 +130,19 @@ export async function POST(request: NextRequest) {
     const url = getSGSSTUrl(airtableSGSSTConfig.equiposTableId);
 
     // Validaciones básicas
-    if (!body.codigo || !body.nombre || !body.categoria || !body.area) {
+    if (!body.nombre || !body.categoria || !body.area) {
       return NextResponse.json(
-        { success: false, message: "Código, nombre, categoría y área son requeridos" },
+        { success: false, message: "Nombre, categoría y área son requeridos" },
         { status: 400 }
       );
     }
 
+    // Generar código automáticamente si no se proporcionó
+    const codigo = body.codigo?.trim() || generateEquipoCode(body.categoria);
+
     // Construir campos para Airtable
     const fields: Record<string, unknown> = {
-      [equiposFields.CODIGO]: body.codigo,
+      [equiposFields.CODIGO]: codigo,
       [equiposFields.NOMBRE]: body.nombre,
       [equiposFields.CATEGORIA]: body.categoria,
       [equiposFields.AREA]: body.area,
@@ -160,7 +178,7 @@ export async function POST(request: NextRequest) {
       message: "Equipo creado exitosamente",
       data: {
         id: data.id,
-        codigo: body.codigo,
+        codigo,
         nombre: body.nombre,
       },
     });
