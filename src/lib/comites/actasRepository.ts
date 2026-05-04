@@ -261,18 +261,26 @@ async function fetchAsistenciasByActa(
       const miembroRecordId = (r.fields[FA.MIEMBRO_LINK] as string[])?.[0] || "";
       const miembro = miembrosMap.get(miembroRecordId);
 
-      // Descifrar firma — con fallback a texto plano para registros anteriores
+      // Descifrar firma — mismo proceso inverso que Asistencia Capacitaciones:
+      //   encryptAES(JSON.stringify({ signature, ... })) → decryptAES → JSON.parse → .signature
+      // Fallbacks para registros anteriores (texto plano o FirmaActaPayload)
       const rawFirma = (r.fields[FA.FIRMA] as string) || null;
       let firma: string | null = null;
       if (rawFirma) {
         if (rawFirma.startsWith("data:")) {
-          // Registro antiguo: guardado sin cifrar
+          // Formato 1: registro antiguo sin cifrar
           firma = rawFirma;
         } else {
           try {
-            firma = decryptAES(rawFirma);
+            const decrypted = decryptAES(rawFirma);
+            // Puede ser JSON ({ signature, ... }) o data URL puro
+            if (decrypted.startsWith("data:")) {
+              firma = decrypted;
+            } else {
+              const parsed = JSON.parse(decrypted) as Record<string, string>;
+              firma = parsed.signature || null;
+            }
           } catch {
-            // Si falla el descifrado, devolver null para no mostrar datos corruptos
             console.warn("[comites] No se pudo descifrar firma de asistente:", miembroRecordId);
             firma = null;
           }
@@ -747,9 +755,17 @@ export async function crearActa(
         [FA.ASISTIO]: ast.asistio,
       };
 
-      // Si tiene firma, agregarla con timestamp
+      // Si tiene firma, cifrarla antes de guardar — mismo proceso que Asistencia Capacitaciones
       if (ast.firma) {
-        fields[FA.FIRMA] = ast.firma;
+        fields[FA.FIRMA] = encryptAES(
+          JSON.stringify({
+            signature: ast.firma,
+            employee: "",
+            document: "",
+            nombre: "",
+            timestamp,
+          })
+        );
         fields[FA.FECHA_FIRMA] = timestamp;
       }
 
@@ -1025,8 +1041,17 @@ export async function firmarAsistencia(
     throw new Error("Debe marcar asistencia antes de firmar");
   }
 
-  // Encriptar firma antes de almacenar
-  const firmaEncriptada = encryptAES(firmaDataUrl);
+  // Cifrar firma — mismo proceso que Asistencia Capacitaciones:
+  // encryptAES sobre JSON payload { signature, employee, document, nombre, timestamp }
+  const firmaEncriptada = encryptAES(
+    JSON.stringify({
+      signature: firmaDataUrl,
+      employee: asistencia.cedula || "",
+      document: asistencia.cedula || "",
+      nombre: asistencia.nombre || "",
+      timestamp: new Date().toISOString(),
+    })
+  );
 
   // Actualizar firma
   const FA = airtableSGSSTConfig.asistenciaComitesFields;
