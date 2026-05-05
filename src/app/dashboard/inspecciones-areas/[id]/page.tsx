@@ -154,6 +154,8 @@ export default function InspeccionAreaDetallePage() {
       console.error("Error al eliminar foto:", err);
     }
   };
+
+  useEffect(() => {
     const cargarDetalle = async () => {
       if (!inspeccionId) {
         setError("No se recibió un identificador de inspección.");
