@@ -130,20 +130,15 @@ function EquipoModal({
         {/* Form */}
         <form onSubmit={handleSubmit} className="p-6 space-y-4 overflow-y-auto max-h-[calc(90vh-140px)]">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {/* Código */}
-            <div>
-              <label className="block text-sm font-medium text-white/70 mb-1.5">
-                Código <span className="text-red-400">*</span>
-              </label>
-              <input
-                type="text"
-                value={formData.codigo}
-                onChange={(e) => handleChange("codigo", e.target.value)}
-                placeholder="EXT-001"
-                required
-                className="w-full px-4 py-2.5 rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-red-400/50"
-              />
-            </div>
+            {/* Código — solo lectura en edición, oculto en creación (el sistema lo genera) */}
+            {mode === "edit" && (
+              <div>
+                <label className="block text-sm font-medium text-white/70 mb-1.5">Código</label>
+                <div className="w-full px-4 py-2.5 rounded-lg bg-white/5 border border-white/10 text-white/50 font-mono text-sm">
+                  {formData.codigo}
+                </div>
+              </div>
+            )}
 
             {/* Categoría */}
             <div>
