@@ -3,7 +3,7 @@
 // Almacenamiento de documentos SG-SST
 // ══════════════════════════════════════════════════════════
 
-import { S3Client, PutObjectCommand, GetObjectCommand } from "@aws-sdk/client-s3";
+import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
 // Configuración del cliente S3
@@ -41,6 +41,10 @@ export const S3_FOLDERS = {
   CAPACITACIONES: "capacitaciones-evidencias",
   /** Documentos generales SST */
   DOCUMENTOS_SST: "documentos-sst",
+  /** Fotos de evidencia de inspecciones de áreas */
+  INSPECCION_AREAS: "inspeccion-areas-evidencias",
+  /** Fotos de evidencia de inspecciones de equipos de emergencia */
+  INSPECCION_EQUIPOS: "inspeccion-equipos-evidencias",
 } as const;
 
 // ══════════════════════════════════════════════════════════
@@ -120,6 +124,18 @@ export async function getPresignedUploadUrl(
   });
 
   return await getSignedUrl(client, command, { expiresIn: expiresInSeconds });
+}
+
+/**
+ * Elimina un objeto de S3 por su key
+ */
+export async function deleteFromS3(key: string): Promise<void> {
+  const client = getS3Client();
+  const command = new DeleteObjectCommand({
+    Bucket: s3Config.bucketName,
+    Key: key,
+  });
+  await client.send(command);
 }
 
 /**

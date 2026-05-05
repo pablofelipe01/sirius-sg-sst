@@ -20,6 +20,7 @@ import {
   Plus,
   Trash2,
   History,
+  Camera,
 } from "lucide-react";
 
 // ══════════════════════════════════════════════════════════
@@ -509,6 +510,11 @@ export default function InspeccionAreasPage() {
   ]);
   const [firmandoIndex, setFirmandoIndex] = useState<number | null>(null);
 
+  // Fotos de evidencia (opcional, máx. 3)
+  const [fotos, setFotos] = useState<File[]>([]);
+  const [fotosPreview, setFotosPreview] = useState<string[]>([]);
+  const fotoInputRef = useRef<HTMLInputElement>(null);
+
   // Cargar responsables del área SST
   useEffect(() => {
     async function fetchResponsablesSST() {
@@ -747,6 +753,41 @@ export default function InspeccionAreasPage() {
       const json = await res.json();
 
       if (json.success) {
+        const recordId = json.data?.recordId as string | undefined;
+        if (fotos.length > 0 && recordId) {
+          try {
+            const presignRes = await fetch("/api/inspecciones-areas/fotos/presign", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                inspeccionRecordId: recordId,
+                fotos: fotos.map((f) => ({ name: f.name, type: f.type, size: f.size })),
+              }),
+            });
+            const presignData = await presignRes.json();
+            if (presignData.success) {
+              const s3Keys: string[] = [];
+              for (let i = 0; i < fotos.length; i++) {
+                const { key, uploadUrl } = presignData.uploads[i];
+                const putRes = await fetch(uploadUrl, {
+                  method: "PUT",
+                  body: fotos[i],
+                  headers: { "Content-Type": fotos[i].type },
+                });
+                if (putRes.ok) s3Keys.push(key);
+              }
+              if (s3Keys.length > 0) {
+                await fetch("/api/inspecciones-areas/fotos", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ inspeccionRecordId: recordId, s3Keys }),
+                });
+              }
+            }
+          } catch (photoErr) {
+            console.error("Error al subir fotos de evidencia:", photoErr);
+          }
+        }
         setPageState("success");
       } else {
         throw new Error(json.message || "Error al guardar");
@@ -1160,6 +1201,70 @@ export default function InspeccionAreasPage() {
             })}
           </div>
         </div>
+
+        {/* Evidencias Fotográficas */}
+        {areaSeleccionada && (
+          <div className="bg-white/10 backdrop-blur-xl rounded-2xl border border-white/10 p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-semibold text-white flex items-center gap-2">
+                <Camera className="w-5 h-5 text-purple-400" />
+                Evidencias Fotográficas
+                <span className="text-xs text-white/40 font-normal">(opcional, máx. 3)</span>
+              </h2>
+              {fotos.length < 3 && (
+                <button
+                  type="button"
+                  onClick={() => fotoInputRef.current?.click()}
+                  className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-purple-500/20 border border-purple-400/30 text-purple-300 text-sm font-medium hover:bg-purple-500/30 transition-all cursor-pointer"
+                >
+                  <Plus className="w-4 h-4" />
+                  Agregar foto
+                </button>
+              )}
+            </div>
+            <input
+              ref={fotoInputRef}
+              type="file"
+              accept="image/*"
+              multiple
+              className="sr-only"
+              onChange={(e) => {
+                const files = Array.from(e.target.files || []);
+                const remaining = 3 - fotos.length;
+                const nuevas = files.slice(0, remaining);
+                setFotos((prev) => [...prev, ...nuevas]);
+                const previews = nuevas.map((f) => URL.createObjectURL(f));
+                setFotosPreview((prev) => [...prev, ...previews]);
+                e.target.value = "";
+              }}
+            />
+            {fotos.length === 0 ? (
+              <p className="text-white/40 text-sm text-center py-4">
+                No hay fotos adjuntas. Se guardarán junto con la inspección.
+              </p>
+            ) : (
+              <div className="flex flex-wrap gap-3">
+                {fotosPreview.map((preview, idx) => (
+                  <div key={idx} className="relative group w-24 h-24 rounded-lg overflow-hidden border border-white/20">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={preview} alt={`Foto ${idx + 1}`} className="w-full h-full object-cover" />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        URL.revokeObjectURL(preview);
+                        setFotos((prev) => prev.filter((_, i) => i !== idx));
+                        setFotosPreview((prev) => prev.filter((_, i) => i !== idx));
+                      }}
+                      className="absolute inset-0 flex items-center justify-center bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity"
+                    >
+                      <X className="w-5 h-5 text-white" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Leyenda */}
         <div className="bg-white/10 backdrop-blur-xl rounded-2xl border border-white/10 px-4 py-3 flex flex-wrap gap-4 text-xs text-white/60">

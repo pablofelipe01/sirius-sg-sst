@@ -51,6 +51,7 @@ interface DetalleEquipo {
   correasArnes: string | null;
   fechaVencimiento: string | null;
   observaciones: string;
+  fotoUrl: string | null;
   equipoNombre: string;
   equipoCodigo: string;
 }
@@ -1116,6 +1117,24 @@ export default function HistorialInspeccionesEquiposPage() {
                                               <p className="text-[10px] text-white/40">
                                                 📝 {textoLimpio}
                                               </p>
+                                            )}
+
+                                            {/* Foto de evidencia */}
+                                            {det.fotoUrl && (
+                                              <a
+                                                href={det.fotoUrl}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="inline-block mt-1"
+                                                title="Ver evidencia fotográfica"
+                                              >
+                                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                                <img
+                                                  src={det.fotoUrl}
+                                                  alt="Evidencia"
+                                                  className="w-16 h-16 object-cover rounded-lg border border-white/20 hover:opacity-80 transition-opacity"
+                                                />
+                                              </a>
                                             )}
                                           </div>
                                         )}

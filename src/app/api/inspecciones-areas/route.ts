@@ -294,6 +294,8 @@ export async function GET(request: NextRequest) {
 
     const inspecciones = data.records.map((record) => {
       const stats = criteriosStats[record.id] || { buenos: 0, malos: 0, na: 0 };
+      const fotoRaw = (record.fields[inspeccionesAreasFields.FOTO_URL] as string) || "";
+      const fotoUrls = fotoRaw ? fotoRaw.split(",").map((u: string) => u.trim()).filter(Boolean) : [];
       return {
         id: record.id,
         idInspeccion: record.fields[inspeccionesAreasFields.ID] as string,
@@ -304,6 +306,7 @@ export async function GET(request: NextRequest) {
         observaciones: (record.fields[inspeccionesAreasFields.OBSERVACIONES] as string) || "",
         urlDocumento: (record.fields[inspeccionesAreasFields.URL_DOCUMENTO] as string) || null,
         fechaExportacion: (record.fields[inspeccionesAreasFields.FECHA_EXPORTACION] as string) || null,
+        fotoUrls,
         cantidadCriterios: criteriosCounts[record.id] || 0,
         criteriosBuenos: stats.buenos,
         criteriosMalos: stats.malos,

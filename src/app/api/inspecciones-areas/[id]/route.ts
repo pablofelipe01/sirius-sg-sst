@@ -184,6 +184,8 @@ export async function GET(
     }
 
     // 5. Construir respuesta
+    const fotoRaw = (cabecera.fields[inspeccionesAreasFields.FOTO_URL] as string) || "";
+    const fotoUrls = fotoRaw ? fotoRaw.split(",").map((u: string) => u.trim()).filter(Boolean) : [];
     const inspeccion = {
       id: cabecera.fields[inspeccionesAreasFields.ID] as string,
       idInspeccion: cabecera.fields[inspeccionesAreasFields.ID] as string,
@@ -195,6 +197,7 @@ export async function GET(
       observaciones: (cabecera.fields[inspeccionesAreasFields.OBSERVACIONES] as string) || "",
       urlDocumento: (cabecera.fields[inspeccionesAreasFields.URL_DOCUMENTO] as string) || null,
       fechaExportacion: (cabecera.fields[inspeccionesAreasFields.FECHA_EXPORTACION] as string) || null,
+      fotoUrls,
       criterios,
       acciones,
       responsables,

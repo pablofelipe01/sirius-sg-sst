@@ -155,6 +155,7 @@ export const airtableSGSSTConfig = {
     // Comunes
     FECHA_VENCIMIENTO: process.env.AIRTABLE_DETEQ_FECHA_VENCIMIENTO!,
     OBSERVACIONES: process.env.AIRTABLE_DETEQ_OBSERVACIONES!,
+    FOTO_URL: process.env.AIRTABLE_DETEQ_FOTO_URL!,
   },
 
   // ── Tabla "Responsables Inspección Equipos" ───────────
@@ -342,6 +343,7 @@ export const airtableSGSSTConfig = {
     DETALLE_LINK:         process.env.AIRTABLE_INSPA_DETALLE_LINK!,
     RESPONSABLES_LINK:    process.env.AIRTABLE_INSPA_RESPONSABLES_LINK!,
     ACCIONES_LINK:        process.env.AIRTABLE_INSPA_ACCIONES_LINK!,
+    FOTO_URL:             process.env.AIRTABLE_INSPA_FOTO_URL!,
   },
 
   // ── Tabla "Detalle Inspección Áreas" ──────────────────

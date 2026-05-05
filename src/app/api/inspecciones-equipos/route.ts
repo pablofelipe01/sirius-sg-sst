@@ -456,6 +456,12 @@ export async function POST(request: NextRequest) {
       responsables: respRecords.length,
     });
 
+    // Construir mapa equipoRecordId → detalleRecordId para upload de fotos post-submit
+    const detalleMap = payload.detalles.map((det, i) => ({
+      equipoRecordId: det.equipoRecordId,
+      detalleRecordId: createdDetalleIds[i] || null,
+    }));
+
     return NextResponse.json({
       success: true,
       message: "Inspección de equipos registrada correctamente",
@@ -464,6 +470,7 @@ export async function POST(request: NextRequest) {
         recordId: cabeceraRecordId,
         fecha: payload.fechaInspeccion,
         equiposInspeccionados: createdDetalleIds.length,
+        detalleMap,
       },
     });
   } catch (error) {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Image from "next/image";
 import {
@@ -13,6 +13,8 @@ import {
   FileText,
   ShieldCheck,
   CheckCircle,
+  Camera,
+  X,
 } from "lucide-react";
 
 interface CriterioDetalle {
@@ -21,6 +23,7 @@ interface CriterioDetalle {
   criterio: string;
   condicion: string;
   observacion: string;
+  fotoUrl: string | null;
 }
 
 interface AccionDetalle {
@@ -54,6 +57,7 @@ interface InspeccionDetalle {
   observaciones: string;
   urlDocumento: string | null;
   fechaExportacion: string | null;
+  fotoUrls: string[];
   criterios: CriterioDetalle[];
   acciones: AccionDetalle[];
   responsables: ResponsableDetalle[];
@@ -86,7 +90,70 @@ export default function InspeccionAreaDetallePage() {
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<InspeccionDetalle | null>(null);
 
+  // Fotos de evidencia
+  const [fotoUploading, setFotoUploading] = useState(false);
+  const [fotoError, setFotoError] = useState<string | null>(null);
+  const [localFotoUrls, setLocalFotoUrls] = useState<string[]>([]);
+  const fotoInputRef = useRef<HTMLInputElement>(null);
+
+  // Sincronizar fotos cuando se carga el detalle
   useEffect(() => {
+    if (data?.fotoUrls) setLocalFotoUrls(data.fotoUrls);
+  }, [data?.fotoUrls]);
+
+  const handleAgregarFoto = async (file: File) => {
+    if (!data?.recordId) return;
+    if (localFotoUrls.length >= 3) return;
+    if (!file.type.match(/^image\/(jpeg|png|webp)$/)) {
+      setFotoError("Solo se permiten imágenes JPG, PNG o WebP");
+      return;
+    }
+    setFotoUploading(true);
+    setFotoError(null);
+    try {
+      const presignRes = await fetch("/api/inspecciones-areas/fotos/presign", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          inspeccionRecordId: data.recordId,
+          fotos: [{ name: file.name, type: file.type, size: file.size }],
+        }),
+      });
+      const presignData = await presignRes.json();
+      if (!presignData.success) throw new Error(presignData.message);
+      const { key, uploadUrl } = presignData.uploads[0];
+      await fetch(uploadUrl, { method: "PUT", body: file, headers: { "Content-Type": file.type } });
+      const saveRes = await fetch("/api/inspecciones-areas/fotos", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ inspeccionRecordId: data.recordId, s3Keys: [key] }),
+      });
+      const saveData = await saveRes.json();
+      if (!saveData.success) throw new Error(saveData.message);
+      setLocalFotoUrls(saveData.fotoUrls ?? [...localFotoUrls, saveData.url ?? ""]);
+    } catch (err) {
+      setFotoError(err instanceof Error ? err.message : "Error al subir foto");
+    } finally {
+      setFotoUploading(false);
+    }
+  };
+
+  const handleEliminarFoto = async (s3Key: string) => {
+    if (!data?.recordId) return;
+    try {
+      const res = await fetch("/api/inspecciones-areas/fotos", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ inspeccionRecordId: data.recordId, s3Key }),
+      });
+      const json = await res.json();
+      if (json.success) {
+        setLocalFotoUrls((prev) => prev.filter((url) => !url.includes(s3Key.split("/").pop()!)));
+      }
+    } catch (err) {
+      console.error("Error al eliminar foto:", err);
+    }
+  };
     const cargarDetalle = async () => {
       if (!inspeccionId) {
         setError("No se recibió un identificador de inspección.");
@@ -279,6 +346,64 @@ export default function InspeccionAreaDetallePage() {
             <section className="bg-white/10 backdrop-blur-xl rounded-2xl border border-white/10 p-6">
               <h2 className="text-lg font-semibold text-white mb-2">Observaciones generales</h2>
               <p className="text-sm text-white/80 whitespace-pre-wrap">{data.observaciones || "Sin observaciones"}</p>
+            </section>
+
+            {/* Evidencias Fotográficas */}
+            <section className="bg-white/10 backdrop-blur-xl rounded-2xl border border-white/10 p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-lg font-semibold text-white flex items-center gap-2">
+                  <Camera className="w-5 h-5 text-purple-400" />
+                  Evidencias Fotográficas
+                </h2>
+                {localFotoUrls.length < 3 && (
+                  <button
+                    type="button"
+                    disabled={fotoUploading}
+                    onClick={() => fotoInputRef.current?.click()}
+                    className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-purple-500/20 border border-purple-400/30 text-purple-300 text-sm font-medium hover:bg-purple-500/30 transition-all cursor-pointer disabled:opacity-50"
+                  >
+                    {fotoUploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Camera className="w-4 h-4" />}
+                    Agregar foto
+                  </button>
+                )}
+              </div>
+              <input
+                ref={fotoInputRef}
+                type="file"
+                accept="image/*"
+                className="sr-only"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) handleAgregarFoto(file);
+                  e.target.value = "";
+                }}
+              />
+              {fotoError && (
+                <p className="text-sm text-red-300 mb-3">{fotoError}</p>
+              )}
+              {localFotoUrls.length === 0 ? (
+                <p className="text-sm text-white/50">No hay evidencias fotográficas registradas.</p>
+              ) : (
+                <div className="flex flex-wrap gap-3">
+                  {localFotoUrls.map((url, idx) => {
+                    const keyPart = url.split("/").slice(-2).join("/");
+                    return (
+                      <div key={idx} className="relative group w-32 h-32 rounded-lg overflow-hidden border border-white/20">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={url} alt={`Evidencia ${idx + 1}`} className="w-full h-full object-cover" />
+                        <button
+                          type="button"
+                          onClick={() => handleEliminarFoto(keyPart)}
+                          className="absolute top-1 right-1 p-1 rounded-full bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity text-white"
+                          title="Eliminar foto"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </section>
           </>
         ) : null}

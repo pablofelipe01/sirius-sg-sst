@@ -171,6 +171,7 @@ export async function GET(
         correasArnes: (r.fields[detalleEquiposFields.CORREAS] as string) || null,
         fechaVencimiento: (r.fields[detalleEquiposFields.FECHA_VENCIMIENTO] as string) || null,
         observaciones: (r.fields[detalleEquiposFields.OBSERVACIONES] as string) || "",
+        fotoUrl: (r.fields[detalleEquiposFields.FOTO_URL] as string) || null,
         equipoNombre: equipoInfo?.nombre || "",
         equipoCodigo: equipoInfo?.codigo || "",
       };

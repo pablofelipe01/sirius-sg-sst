@@ -32,6 +32,7 @@ import {
   Trash2,
   RefreshCw,
   Clock,
+  Camera,
 } from "lucide-react";
 import { useSession } from "@/presentation/context/SessionContext";
 
@@ -628,6 +629,10 @@ export default function InspeccionEquiposPage() {
   const [fechaInspeccion, setFechaInspeccion] = useState(formatDate(new Date()));
   const [inspector, setInspector] = useState("");
   const [inspecciones, setInspecciones] = useState<InspeccionEquipo[]>([]);
+
+  // Fotos de evidencia por equipo (equipoId → File)
+  const [fotosEquipo, setFotosEquipo] = useState<Record<string, File>>({});
+  const [fotosPreviewEquipo, setFotosPreviewEquipo] = useState<Record<string, string>>({});
 
   // Equipos
   const [loading, setLoading] = useState(true);
@@ -1883,6 +1888,39 @@ export default function InspeccionEquiposPage() {
       const json = await res.json();
 
       if (json.success) {
+        // Subir fotos de equipos en segundo plano (no bloquea el éxito)
+        const detalleMap: { equipoRecordId: string; detalleRecordId: string | null }[] = json.data?.detalleMap ?? [];
+        if (detalleMap.length > 0 && Object.keys(fotosEquipo).length > 0) {
+          (async () => {
+            for (const entry of detalleMap) {
+              if (!entry.detalleRecordId) continue;
+              const foto = fotosEquipo[entry.equipoRecordId];
+              if (!foto) continue;
+              try {
+                const presignRes = await fetch("/api/inspecciones-equipos/foto-equipo/presign", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    detalleRecordId: entry.detalleRecordId,
+                    foto: { name: foto.name, type: foto.type, size: foto.size },
+                  }),
+                });
+                const pd = await presignRes.json();
+                if (!pd.success) continue;
+                const { key, uploadUrl } = pd.upload;
+                const putRes = await fetch(uploadUrl, { method: "PUT", body: foto, headers: { "Content-Type": foto.type } });
+                if (!putRes.ok) continue;
+                await fetch("/api/inspecciones-equipos/foto-equipo", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ detalleRecordId: entry.detalleRecordId, s3Key: key }),
+                });
+              } catch (photoErr) {
+                console.error("Error subiendo foto de equipo:", photoErr);
+              }
+            }
+          })();
+        }
         setPageState("success");
       } else {
         throw new Error(json.message || "Error al guardar la inspección");
@@ -2748,6 +2786,47 @@ export default function InspeccionEquiposPage() {
                                 </div>
                               </>
                             )}
+                            {/* Foto de evidencia del equipo */}
+                            <div className="mt-3 pt-3 border-t border-white/10">
+                              <div className="flex items-center gap-3">
+                                {fotosPreviewEquipo[insp.equipoId] ? (
+                                  <div className="relative group w-16 h-16 rounded-lg overflow-hidden border border-white/20 shrink-0">
+                                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                                    <img src={fotosPreviewEquipo[insp.equipoId]} alt="Evidencia" className="w-full h-full object-cover" />
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        URL.revokeObjectURL(fotosPreviewEquipo[insp.equipoId]);
+                                        setFotosEquipo((prev) => { const n = { ...prev }; delete n[insp.equipoId]; return n; });
+                                        setFotosPreviewEquipo((prev) => { const n = { ...prev }; delete n[insp.equipoId]; return n; });
+                                      }}
+                                      className="absolute inset-0 flex items-center justify-center bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity"
+                                    >
+                                      <X className="w-4 h-4 text-white" />
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <label className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/5 border border-white/15 text-white/50 text-xs cursor-pointer hover:bg-white/10 hover:text-white/70 transition-colors">
+                                    <Camera className="w-3.5 h-3.5" />
+                                    Foto
+                                    <input
+                                      type="file"
+                                      accept="image/*"
+                                      className="sr-only"
+                                      onChange={(e) => {
+                                        const file = e.target.files?.[0];
+                                        if (file) {
+                                          setFotosEquipo((prev) => ({ ...prev, [insp.equipoId]: file }));
+                                          setFotosPreviewEquipo((prev) => ({ ...prev, [insp.equipoId]: URL.createObjectURL(file) }));
+                                        }
+                                        e.target.value = "";
+                                      }}
+                                    />
+                                  </label>
+                                )}
+                                <span className="text-[10px] text-white/30">Evidencia fotográfica opcional</span>
+                              </div>
+                            </div>
                           </div>
                         );
                       })}
