@@ -22,6 +22,7 @@ import {
   History,
   Camera,
 } from "lucide-react";
+import { guardarEnGaleria } from "@/shared/utils";
 
 // ══════════════════════════════════════════════════════════
 // Tipos
@@ -1232,6 +1233,7 @@ export default function InspeccionAreasPage() {
                 const files = Array.from(e.target.files || []);
                 const remaining = 3 - fotos.length;
                 const nuevas = files.slice(0, remaining);
+                nuevas.forEach((f) => guardarEnGaleria(f));
                 setFotos((prev) => [...prev, ...nuevas]);
                 const previews = nuevas.map((f) => URL.createObjectURL(f));
                 setFotosPreview((prev) => [...prev, ...previews]);

@@ -31,6 +31,7 @@ import {
   Upload,
   Trash2,
 } from "lucide-react";
+import { guardarEnGaleria } from "@/shared/utils";
 
 // ══════════════════════════════════════════════════════════
 // Tipos
@@ -197,6 +198,7 @@ function GestorFotos({
       return;
     }
 
+    guardarEnGaleria(file);
     setUploading(idx);
     setError(null);
     setSuccess(null);

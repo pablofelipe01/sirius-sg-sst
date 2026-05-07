@@ -16,6 +16,7 @@ import {
   Camera,
   X,
 } from "lucide-react";
+import { guardarEnGaleria } from "@/shared/utils";
 
 interface CriterioDetalle {
   id: string;
@@ -376,7 +377,10 @@ export default function InspeccionAreaDetallePage() {
                 className="sr-only"
                 onChange={(e) => {
                   const file = e.target.files?.[0];
-                  if (file) handleAgregarFoto(file);
+                  if (file) {
+                    guardarEnGaleria(file);
+                    handleAgregarFoto(file);
+                  }
                   e.target.value = "";
                 }}
               />

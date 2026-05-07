@@ -35,6 +35,7 @@ import {
   Camera,
 } from "lucide-react";
 import { useSession } from "@/presentation/context/SessionContext";
+import { guardarEnGaleria } from "@/shared/utils";
 
 // ══════════════════════════════════════════════════════════
 // Tipos
@@ -2816,6 +2817,7 @@ export default function InspeccionEquiposPage() {
                                       onChange={(e) => {
                                         const file = e.target.files?.[0];
                                         if (file) {
+                                          guardarEnGaleria(file);
                                           setFotosEquipo((prev) => ({ ...prev, [insp.equipoId]: file }));
                                           setFotosPreviewEquipo((prev) => ({ ...prev, [insp.equipoId]: URL.createObjectURL(file) }));
                                         }

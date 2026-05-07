@@ -117,3 +117,25 @@ export function formatDate(date: Date, locale = "es-CO"): string {
   });
 }
 
+// ══════════════════════════════════════════════════════════
+// Galería del dispositivo
+// ══════════════════════════════════════════════════════════
+
+/**
+ * Guarda una imagen en la galería del dispositivo descargándola
+ * al almacenamiento local del navegador.
+ * En iOS Safari las descargas de imágenes van automáticamente
+ * a la app Fotos. En Android van a Descargas / Galería.
+ */
+export function guardarEnGaleria(file: File): void {
+  const url = URL.createObjectURL(file);
+  const a = document.createElement("a");
+  a.href = url;
+  const ext = file.name.split(".").pop()?.toLowerCase() || "jpg";
+  a.download = `evidencia_${Date.now()}.${ext}`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+

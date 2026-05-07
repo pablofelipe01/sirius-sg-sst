@@ -28,6 +28,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { useSession } from "@/presentation/context/SessionContext";
+import { guardarEnGaleria } from "@/shared/utils";
 
 // ══════════════════════════════════════════════════════════
 // Tipos
@@ -1322,6 +1323,7 @@ export default function EntregaEPPPage() {
                       setErrorMsg("Máximo 3 fotos de dotación");
                       return;
                     }
+                    guardarEnGaleria(file);
                     setFotosDotacion((prev) => [...prev, file]);
                     setFotosPreviewsDotacion((prev) => [...prev, URL.createObjectURL(file)]);
                     if (fotoInputRefDotacion.current) fotoInputRefDotacion.current.value = "";
@@ -1401,6 +1403,7 @@ export default function EntregaEPPPage() {
                       setErrorMsg("Máximo 3 fotos de EPP");
                       return;
                     }
+                    guardarEnGaleria(file);
                     setFotosEpp((prev) => [...prev, file]);
                     setFotosPreviewsEpp((prev) => [...prev, URL.createObjectURL(file)]);
                     if (fotoInputRefEpp.current) fotoInputRefEpp.current.value = "";
