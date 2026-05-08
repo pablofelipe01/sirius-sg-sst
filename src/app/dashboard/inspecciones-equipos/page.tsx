@@ -283,6 +283,73 @@ const ESTADO_ELEMENTO_COLORS: Record<string, { bg: string; text: string; border:
 };
 
 // ══════════════════════════════════════════════════════════
+// Borrador persistente (localStorage)
+// ══════════════════════════════════════════════════════════
+const BORRADOR_KEY = "inspeccion_equipos_borrador";
+const BORRADOR_VERSION = 1;
+
+type InspeccionDataGuardada = {
+  criteriosComunes: CriteriosComunes;
+  criteriosExtintor: CriteriosExtintor;
+  criteriosCamilla: CriteriosCamilla;
+  elementosBotiquin: Record<string, ElementoBotiquinInspeccion>;
+  criteriosExtintorDetalle: Record<string, CriterioExtintorInspeccion>;
+  infoExtintor: InfoExtintor;
+  elementosKit: Record<string, ElementoKitInspeccion>;
+  verificacionesKit: Record<string, VerificacionKitInspeccion>;
+  elementosCamilla: Record<string, ElementoCamillaInspeccion>;
+  fechaVencimiento: string;
+  observaciones: string;
+};
+
+interface FotoGuardada {
+  dataUrl: string;
+  name: string;
+  type: string;
+}
+
+interface BorradorData {
+  version: number;
+  savedAt: string;
+  fechaInspeccion: string;
+  inspector: string;
+  inspeccionesData: Record<string, InspeccionDataGuardada>;
+  firmasAreas: FirmaArea[];
+  firmaSST: FirmaGlobal;
+  firmaCOPASST: FirmaGlobal;
+  areasGuardadas: string[];
+  fotosBase64?: Record<string, FotoGuardada>;
+}
+
+function leerBorrador(): BorradorData | null {
+  try {
+    const raw = localStorage.getItem(BORRADOR_KEY);
+    if (!raw) return null;
+    const data = JSON.parse(raw) as BorradorData;
+    if (data.version !== BORRADOR_VERSION) return null;
+    return data;
+  } catch {
+    return null;
+  }
+}
+
+function guardarBorrador(data: BorradorData): void {
+  try {
+    localStorage.setItem(BORRADOR_KEY, JSON.stringify(data));
+  } catch {
+    // Cuota de localStorage excedida — ignorar silenciosamente
+  }
+}
+
+function eliminarBorrador(): void {
+  try {
+    localStorage.removeItem(BORRADOR_KEY);
+  } catch {
+    // ignorar
+  }
+}
+
+// ══════════════════════════════════════════════════════════
 // Helpers
 // ══════════════════════════════════════════════════════════
 function formatDate(date: Date): string {
@@ -634,6 +701,8 @@ export default function InspeccionEquiposPage() {
   // Fotos de evidencia por equipo (equipoId → File)
   const [fotosEquipo, setFotosEquipo] = useState<Record<string, File>>({});
   const [fotosPreviewEquipo, setFotosPreviewEquipo] = useState<Record<string, string>>({});
+  // Versión base64 de las fotos para persistencia en borrador
+  const [fotosBase64, setFotosBase64] = useState<Record<string, FotoGuardada>>({});
 
   // Equipos
   const [loading, setLoading] = useState(true);
@@ -696,6 +765,11 @@ export default function InspeccionEquiposPage() {
     firma: null,
   });
   const [firmandoGlobal, setFirmandoGlobal] = useState<"SST" | "COPASST" | null>(null);
+
+  // Borrador persistente
+  const cargaInicialLista = useRef(false); // true tras la primera carga de equipos
+  const [borradorGuardadoEn, setBorradorGuardadoEn] = useState<Date | null>(null);
+  const borradorTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Responsables SST (miembros del comité COPASST + Responsables SG-SST)
   const [responsablesSST, setResponsablesSST] = useState<{ id: string; nombre: string; cedula: string; cargo: string }[]>([]);
@@ -773,7 +847,38 @@ export default function InspeccionEquiposPage() {
           categoria: CATEGORIA_NORMALIZE[e.categoria] || e.categoria,
         }));
         const inspeccionesIniciales = equipos.map(createEmptyInspeccion);
-        setInspecciones(inspeccionesIniciales);
+
+        // Restaurar borrador si existe
+        const borrador = leerBorrador();
+        if (borrador) {
+          // Aplicar datos guardados sobre las inspecciones iniciales
+          const inspeccionesConBorrador = inspeccionesIniciales.map((insp) => {
+            const guardado = borrador.inspeccionesData[insp.equipoId];
+            if (!guardado) return insp;
+            return {
+              ...insp,
+              criteriosComunes: guardado.criteriosComunes,
+              criteriosExtintor: guardado.criteriosExtintor,
+              criteriosCamilla: guardado.criteriosCamilla,
+              elementosBotiquin: guardado.elementosBotiquin,
+              criteriosExtintorDetalle: guardado.criteriosExtintorDetalle,
+              infoExtintor: guardado.infoExtintor,
+              elementosKit: guardado.elementosKit,
+              verificacionesKit: guardado.verificacionesKit,
+              elementosCamilla: guardado.elementosCamilla,
+              fechaVencimiento: guardado.fechaVencimiento,
+              observaciones: guardado.observaciones,
+            };
+          });
+          setInspecciones(inspeccionesConBorrador);
+          if (borrador.fechaInspeccion) setFechaInspeccion(borrador.fechaInspeccion);
+          if (borrador.inspector) setInspector(borrador.inspector);
+          if (borrador.areasGuardadas?.length) {
+            setAreasGuardadas(new Set(borrador.areasGuardadas));
+          }
+        } else {
+          setInspecciones(inspeccionesIniciales);
+        }
 
         // Extraer áreas únicas
         const areasUnicas = [...new Set(equipos.map((e) => e.area))].filter(Boolean).sort();
@@ -784,15 +889,47 @@ export default function InspeccionEquiposPage() {
         areasUnicas.forEach((a) => (expanded[a] = true));
         setExpandedAreas(expanded);
 
-        // Inicializar firmas por área
-        const firmasInit: FirmaArea[] = areasUnicas.map((a) => ({
-          area: a,
-          nombre: "",
-          cedula: "",
-          cargo: "",
-          firma: null,
-        }));
+        // Inicializar firmas por área (restaurando desde borrador si hay)
+        const firmasInit: FirmaArea[] = areasUnicas.map((a) => {
+          const firmaGuardada = borrador?.firmasAreas?.find((f) => f.area === a);
+          return firmaGuardada ?? { area: a, nombre: "", cedula: "", cargo: "", firma: null };
+        });
         setFirmasAreas(firmasInit);
+
+        // Restaurar firmas globales desde borrador
+        if (borrador?.firmaSST) setFirmaSST(borrador.firmaSST);
+        if (borrador?.firmaCOPASST) setFirmaCOPASST(borrador.firmaCOPASST);
+
+        // Restaurar fotos desde borrador
+        if (borrador?.fotosBase64 && Object.keys(borrador.fotosBase64).length > 0) {
+          // Usar los dataUrls directamente como preview (son válidos en <img src>)
+          setFotosPreviewEquipo(
+            Object.fromEntries(
+              Object.entries(borrador.fotosBase64).map(([id, f]) => [id, f.dataUrl])
+            )
+          );
+          // Reconstruir File objects desde base64 para poder subirlos a S3
+          const fileEntries = await Promise.all(
+            Object.entries(borrador.fotosBase64).map(async ([id, f]) => {
+              try {
+                const resp = await fetch(f.dataUrl);
+                const blob = await resp.blob();
+                const file = new File([blob], f.name, { type: f.type });
+                return [id, file] as [string, File];
+              } catch {
+                return null;
+              }
+            })
+          );
+          const filesMap: Record<string, File> = {};
+          fileEntries.forEach((entry) => { if (entry) filesMap[entry[0]] = entry[1]; });
+          setFotosEquipo(filesMap);
+          setFotosBase64(borrador.fotosBase64);
+        }
+
+        // Marcar carga inicial como lista para habilitar el guardado automático
+        cargaInicialLista.current = true;
+        if (borrador) setBorradorGuardadoEn(new Date(borrador.savedAt));
       }
     } catch {
       console.error("Error cargando equipos");
@@ -812,6 +949,58 @@ export default function InspeccionEquiposPage() {
       setInspector(user.nombreCompleto);
     }
   }, [user, inspector]);
+
+  // Guardar borrador automáticamente con debounce de 1.5 s
+  useEffect(() => {
+    if (!cargaInicialLista.current) return;
+    if (borradorTimer.current) clearTimeout(borradorTimer.current);
+    borradorTimer.current = setTimeout(() => {
+      const inspeccionesData: Record<string, InspeccionDataGuardada> = {};
+      inspecciones.forEach((i) => {
+        inspeccionesData[i.equipoId] = {
+          criteriosComunes: i.criteriosComunes,
+          criteriosExtintor: i.criteriosExtintor,
+          criteriosCamilla: i.criteriosCamilla,
+          elementosBotiquin: i.elementosBotiquin,
+          criteriosExtintorDetalle: i.criteriosExtintorDetalle,
+          infoExtintor: i.infoExtintor,
+          elementosKit: i.elementosKit,
+          verificacionesKit: i.verificacionesKit,
+          elementosCamilla: i.elementosCamilla,
+          fechaVencimiento: i.fechaVencimiento,
+          observaciones: i.observaciones,
+        };
+      });
+      const data: BorradorData = {
+        version: BORRADOR_VERSION,
+        savedAt: new Date().toISOString(),
+        fechaInspeccion,
+        inspector,
+        inspeccionesData,
+        firmasAreas,
+        firmaSST,
+        firmaCOPASST,
+        areasGuardadas: [...areasGuardadas],
+        fotosBase64,
+      };
+      guardarBorrador(data);
+      setBorradorGuardadoEn(new Date());
+    }, 1500);
+    return () => {
+      if (borradorTimer.current) clearTimeout(borradorTimer.current);
+    };
+  }, [inspecciones, firmasAreas, firmaSST, firmaCOPASST, fechaInspeccion, inspector, areasGuardadas, fotosBase64]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Limpiar borrador y reiniciar formulario
+  const limpiarBorrador = useCallback(() => {
+    eliminarBorrador();
+    setBorradorGuardadoEn(null);
+    setFotosEquipo({});
+    setFotosPreviewEquipo({});
+    setFotosBase64({});
+    cargaInicialLista.current = false;
+    fetchEquipos();
+  }, [fetchEquipos]);
 
   // Filtrar inspecciones
   const inspeccionesFiltradas = inspecciones.filter((i) => {
@@ -1320,8 +1509,14 @@ export default function InspeccionEquiposPage() {
 
       if (json.success) {
         // Marcar el área como guardada
-        setAreasGuardadas((prev) => new Set([...prev, area]));
+        const nuevasAreasGuardadas = new Set([...areasGuardadas, area]);
+        setAreasGuardadas(nuevasAreasGuardadas);
         setErrorMessage(null);
+        // Si todas las áreas están guardadas, limpiar el borrador
+        if (nuevasAreasGuardadas.size >= areas.length && areas.length > 0) {
+          eliminarBorrador();
+          setBorradorGuardadoEn(null);
+        }
         // Mostrar mensaje de éxito temporal
         setPageState("success");
         setTimeout(() => setPageState("idle"), 3000);
@@ -1922,6 +2117,10 @@ export default function InspeccionEquiposPage() {
             }
           })();
         }
+        // Inspección completa guardada → eliminar borrador
+        eliminarBorrador();
+        setBorradorGuardadoEn(null);
+        setFotosBase64({});
         setPageState("success");
       } else {
         throw new Error(json.message || "Error al guardar la inspección");
@@ -1988,6 +2187,25 @@ export default function InspeccionEquiposPage() {
                 <span className="hidden sm:inline">Historial</span>
               </button>
               
+              {/* Indicador de borrador guardado */}
+              {borradorGuardadoEn && (
+                <div className="hidden sm:flex items-center gap-2">
+                  <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-amber-500/15 border border-amber-500/25">
+                    <Clock size={12} className="text-amber-400" />
+                    <span className="text-[11px] text-amber-300 font-medium">
+                      Borrador guardado {borradorGuardadoEn.toLocaleTimeString("es-CO", { hour: "2-digit", minute: "2-digit" })}
+                    </span>
+                  </div>
+                  <button
+                    onClick={limpiarBorrador}
+                    title="Descartar borrador y reiniciar formulario"
+                    className="p-1.5 rounded-lg bg-white/10 hover:bg-red-500/20 text-white/50 hover:text-red-300 border border-white/15 hover:border-red-500/30 transition-all"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </div>
+              )}
+
               {/* Indicador de áreas guardadas */}
               {areasGuardadas.size > 0 && (
                 <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-green-500/20 border border-green-500/30">
@@ -2797,9 +3015,13 @@ export default function InspeccionEquiposPage() {
                                     <button
                                       type="button"
                                       onClick={() => {
-                                        URL.revokeObjectURL(fotosPreviewEquipo[insp.equipoId]);
+                                        // Solo revocar si es un object URL (no base64)
+                                        if (fotosPreviewEquipo[insp.equipoId]?.startsWith('blob:')) {
+                                          URL.revokeObjectURL(fotosPreviewEquipo[insp.equipoId]);
+                                        }
                                         setFotosEquipo((prev) => { const n = { ...prev }; delete n[insp.equipoId]; return n; });
                                         setFotosPreviewEquipo((prev) => { const n = { ...prev }; delete n[insp.equipoId]; return n; });
+                                        setFotosBase64((prev) => { const n = { ...prev }; delete n[insp.equipoId]; return n; });
                                       }}
                                       className="absolute inset-0 flex items-center justify-center bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity"
                                     >
@@ -2820,6 +3042,15 @@ export default function InspeccionEquiposPage() {
                                           guardarEnGaleria(file);
                                           setFotosEquipo((prev) => ({ ...prev, [insp.equipoId]: file }));
                                           setFotosPreviewEquipo((prev) => ({ ...prev, [insp.equipoId]: URL.createObjectURL(file) }));
+                                          // Leer como base64 para guardar en borrador
+                                          const reader = new FileReader();
+                                          reader.onload = (ev) => {
+                                            const dataUrl = ev.target?.result as string;
+                                            if (dataUrl) {
+                                              setFotosBase64((prev) => ({ ...prev, [insp.equipoId]: { dataUrl, name: file.name, type: file.type } }));
+                                            }
+                                          };
+                                          reader.readAsDataURL(file);
                                         }
                                         e.target.value = "";
                                       }}
