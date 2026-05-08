@@ -157,10 +157,11 @@ async function fetchImageAsBase64(imageUrl: string): Promise<string | null> {
     clearTimeout(timeout);
     if (!res.ok) return null;
     const rawBuffer = Buffer.from(await res.arrayBuffer());
-    // Auto-rotar según EXIF y convertir a JPEG para consistencia
+    // Auto-rotar según EXIF, reducir resolución y convertir a JPEG
     const correctedBuffer = await sharp(rawBuffer)
       .rotate() // auto-rotate based on EXIF orientation
-      .jpeg({ quality: 85 })
+      .resize(800, 800, { fit: "inside", withoutEnlargement: true })
+      .jpeg({ quality: 82 })
       .toBuffer();
     const base64 = correctedBuffer.toString("base64");
     return `data:image/jpeg;base64,${base64}`;
@@ -686,7 +687,7 @@ export async function GET(req: NextRequest) {
 
         // ── Fotos de evidencia ──────────────────────────
         if (ent.fotoUrls.length > 0) {
-          y = checkSpace(55, y);
+          y = checkSpace(15, y);
 
           doc.setFontSize(8);
           doc.setFont("helvetica", "bold");
@@ -694,43 +695,44 @@ export async function GET(req: NextRequest) {
           doc.text("Evidencias fotográficas:", MARGIN, y);
           y += 5;
 
-          // Layout: hasta 3 fotos en fila, ocupando el ancho disponible
+          // Grid: máximo 3 fotos por fila, tamaño máx 55mm
+          const PER_ROW = 3;
           const IMG_GAP = 4;
-          const IMG_SIZE = Math.floor((CONTENT_W - IMG_GAP * (ent.fotoUrls.length - 1)) / ent.fotoUrls.length);
-          const totalImgW = ent.fotoUrls.length * IMG_SIZE + (ent.fotoUrls.length - 1) * IMG_GAP;
-          let imgX = MARGIN + (CONTENT_W - totalImgW) / 2; // centrar
-          if (imgX < MARGIN) imgX = MARGIN;
+          const IMG_SIZE = Math.min(55, Math.floor((CONTENT_W - IMG_GAP * (PER_ROW - 1)) / PER_ROW));
 
-          y = checkSpace(IMG_SIZE + 10, y);
+          for (let rowStart = 0; rowStart < ent.fotoUrls.length; rowStart += PER_ROW) {
+            const rowUrls = ent.fotoUrls.slice(rowStart, rowStart + PER_ROW);
+            y = checkSpace(IMG_SIZE + 6, y);
+            let imgX = MARGIN;
 
-          for (const fotoUrl of ent.fotoUrls) {
-            const imgData = photoCache.get(fotoUrl);
-            if (imgData) {
-              try {
-                // Borde de la imagen
-                doc.setDrawColor(...BRAND.GRIS_BORDE);
-                doc.setLineWidth(0.3);
-                doc.roundedRect(imgX - 0.5, y - 0.5, IMG_SIZE + 1, IMG_SIZE + 1, 1, 1, "S");
-                doc.addImage(imgData, "JPEG", imgX, y, IMG_SIZE, IMG_SIZE);
-              } catch {
-                // Si falla la imagen, poner placeholder
+            for (const fotoUrl of rowUrls) {
+              const imgData = photoCache.get(fotoUrl);
+              if (imgData) {
+                try {
+                  doc.setDrawColor(...BRAND.GRIS_BORDE);
+                  doc.setLineWidth(0.3);
+                  doc.roundedRect(imgX - 0.5, y - 0.5, IMG_SIZE + 1, IMG_SIZE + 1, 1, 1, "S");
+                  doc.addImage(imgData, "JPEG", imgX, y, IMG_SIZE, IMG_SIZE);
+                } catch {
+                  doc.setFillColor(...BRAND.FONDO_CLARO);
+                  doc.rect(imgX, y, IMG_SIZE, IMG_SIZE, "F");
+                  doc.setFontSize(7);
+                  doc.setTextColor(...BRAND.GRIS_TEXTO);
+                  doc.text("Imagen no\ndisponible", imgX + IMG_SIZE / 2, y + IMG_SIZE / 2, { align: "center" });
+                }
+              } else {
                 doc.setFillColor(...BRAND.FONDO_CLARO);
-                doc.rect(imgX, y, IMG_SIZE, IMG_SIZE, "F");
+                doc.roundedRect(imgX, y, IMG_SIZE, IMG_SIZE, 1, 1, "F");
                 doc.setFontSize(7);
                 doc.setTextColor(...BRAND.GRIS_TEXTO);
                 doc.text("Imagen no\ndisponible", imgX + IMG_SIZE / 2, y + IMG_SIZE / 2, { align: "center" });
               }
-            } else {
-              doc.setFillColor(...BRAND.FONDO_CLARO);
-              doc.roundedRect(imgX, y, IMG_SIZE, IMG_SIZE, 1, 1, "F");
-              doc.setFontSize(7);
-              doc.setTextColor(...BRAND.GRIS_TEXTO);
-              doc.text("Imagen no\ndisponible", imgX + IMG_SIZE / 2, y + IMG_SIZE / 2, { align: "center" });
+              imgX += IMG_SIZE + IMG_GAP;
             }
-            imgX += IMG_SIZE + IMG_GAP;
+            y += IMG_SIZE + 4;
           }
 
-          y += IMG_SIZE + 6;
+          y += 2;
         }
 
         // ── Firma del empleado ──────────────────────────

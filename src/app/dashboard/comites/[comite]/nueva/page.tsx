@@ -104,7 +104,10 @@ export default function NuevaActaPage({
 
   // ── Estado: cabecera ──
   const today = new Date();
-  const [fechaReunion, setFechaReunion] = useState(today.toISOString().slice(0, 10));
+  // Usar métodos locales para evitar desfase UTC (en Colombia, toISOString() puede
+  // devolver el día siguiente a partir de las ~7 PM hora Bogotá)
+  const todayLocal = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+  const [fechaReunion, setFechaReunion] = useState(todayLocal);
   const [horaInicio, setHoraInicio] = useState("09:00");
   const [horaCierre, setHoraCierre] = useState("10:00");
   const [lugarSeleccionado, setLugarSeleccionado] = useState<string>("");

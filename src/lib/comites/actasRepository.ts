@@ -88,16 +88,17 @@ function escapeFormulaValue(v: string): string {
 }
 
 /**
- * Elimina entradas cuya clave sea vacía/undefined (campos opcionales del .env
- * que no fueron configurados, p.ej. CREATED_AT/UPDATED_AT cuando la tabla no
- * los tiene). Airtable rechaza cabeceras con keys vacías.
+ * Elimina entradas cuya clave sea vacía, solo espacios, o la cadena literal
+ * "undefined" (ocurre cuando una variable de entorno no está configurada y se
+ * usa como clave de objeto: `[process.env.CAMPO_NO_DEFINIDO]` → `"undefined"`).
+ * Airtable rechaza cualquier campo con nombre desconocido.
  */
 function cleanFields(
   fields: Record<string, unknown>
 ): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(fields)) {
-    if (k && k.trim() !== "") out[k] = v;
+    if (k && k.trim() !== "" && k !== "undefined") out[k] = v;
   }
   return out;
 }
