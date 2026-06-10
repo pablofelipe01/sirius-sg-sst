@@ -333,7 +333,6 @@ function FirmarInduccionContent() {
               temas: temasConstancia,
             },
             evaluacion: evaluacionResultado,
-            firmaEmpleadoDataUrl: signatureDataUrl,
           }),
         });
       } catch (errDoc) {

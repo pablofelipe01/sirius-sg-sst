@@ -212,7 +212,7 @@ function renderEncabezado(doc: jsPDF, y: number, M: number, CW: number, tituloFo
   doc.setTextColor(...C.NEGRO);
   doc.setFont("helvetica", "bold");
   doc.setFontSize(7.5);
-  doc.text("CODIGO: F-SST-IND-001", ccx + cC / 2, y + rH / 2 + 1.5, { align: "center" });
+  doc.text("CODIGO: FT-SST-025", ccx + cC / 2, y + rH / 2 + 1.5, { align: "center" });
   doc.setFont("helvetica", "normal");
   doc.text("VERSION: 1", ccx + cC / 2, y + rH + rH / 2 + 1.5, { align: "center" });
   doc.text("FECHA EDICION: 2026-01-01", ccx + cC / 2, y + 2 * rH + rH / 2 + 1.5, { align: "center" });
@@ -507,8 +507,8 @@ function dibujarCertificado(
   const CW = PW - M * 2;
 
   let y = M;
-  y = renderEncabezado(pdf, y, M, CW, "FORMATO CERTIFICADO DE INDUCCIÓN", logo64);
-  y = renderTituloBanda(pdf, y, M, CW, "CERTIFICADO DE INDUCCIÓN");
+  y = renderEncabezado(pdf, y, M, CW, "FORMATO CERTIFICADO DE INDUCCIÓN Y/O REINDUCCIÓN", logo64);
+  y = renderTituloBanda(pdf, y, M, CW, "CERTIFICADO DE INDUCCIÓN Y/O REINDUCCIÓN");
 
   const tipoTexto = registro.tipo === "Induccion" ? "inducción" : "reinducción";
 
@@ -684,11 +684,21 @@ export async function regenerarDocumentoConFirmaResponsable(
   }
 
   // Recupera el snapshot: usa el campo de Airtable si existe; si no, la key determinística por inducción.
-  const snapshotKey = registro.documentoSnapshotUrl
-    ? extractS3KeyFromUrl(registro.documentoSnapshotUrl)
-    : snapshotS3Key(registro.idInduccion);
+  let snapshotKey: string | null = null;
 
-  let snapshot: DocumentoUnificadoSnapshot | null;
+  if (registro.documentoSnapshotUrl) {
+    snapshotKey = extractS3KeyFromUrl(registro.documentoSnapshotUrl);
+  } else {
+    snapshotKey = snapshotS3Key(registro.idInduccion);
+  }
+
+  if (!snapshotKey) {
+    throw new Error(
+      "No se pudo determinar la ubicación del snapshot del documento. El colaborador debe firmar primero."
+    );
+  }
+
+  let snapshot: DocumentoUnificadoSnapshot | null = null;
   try {
     snapshot = await readJsonFromS3<DocumentoUnificadoSnapshot>(snapshotKey);
   } catch {
@@ -699,7 +709,7 @@ export async function regenerarDocumentoConFirmaResponsable(
 
   if (!snapshot) {
     throw new Error(
-      "No se encontró el snapshot del documento para regenerar el PDF. El colaborador debe firmar primero."
+      "El snapshot del documento está vacío. El colaborador debe firmar primero."
     );
   }
 

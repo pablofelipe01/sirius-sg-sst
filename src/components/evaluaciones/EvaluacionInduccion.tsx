@@ -39,6 +39,26 @@ interface PlantillaDetail {
   mostrarRetro: boolean;
 }
 
+// Detalle de cada respuesta del usuario (para el PDF unificado)
+export interface RespuestaDetalle {
+  orden: number;
+  pregunta: string;
+  opciones: string[];
+  respuestaUsuario: string;
+  respuestaCorrecta: string;
+  esCorrecta: boolean;
+  puntajeAsignado: number;
+  puntajeObtenido: number;
+}
+
+export interface ResultadoEvaluacion {
+  puntaje: number;
+  puntajeObtenido: number;
+  puntajeMaximo: number;
+  aprobada: boolean;
+  detalle: RespuestaDetalle[];
+}
+
 // ── Props ────────────────────────────────────────────────
 
 interface EvaluacionInduccionProps {
@@ -47,8 +67,8 @@ interface EvaluacionInduccionProps {
   nombreEmpleado: string;
   numeroDocumento: string;
   cargo?: string;
-  onAprobada: (puntaje: number) => void;
-  onReprobada: () => void;
+  onAprobada: (puntaje: number, resultado?: ResultadoEvaluacion) => void;
+  onReprobada: (resultado?: ResultadoEvaluacion) => void;
 }
 
 // ════════════════════════════════════════════════════════
@@ -64,6 +84,7 @@ export default function EvaluacionInduccion({
   onAprobada,
   onReprobada,
 }: EvaluacionInduccionProps) {
+  const draftKey = `sirius-induccion-eval-draft:${induccionId}:${idEmpleadoCore}`;
   type Screen = "loading" | "tomando" | "resultado" | "error";
   const [screen, setScreen] = useState<Screen>("loading");
   const [errorMsg, setErrorMsg] = useState("");
@@ -80,6 +101,24 @@ export default function EvaluacionInduccion({
   // Timer
   const [secondsLeft, setSecondsLeft] = useState(0);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const saveDraft = (nextAnswers: Map<string, string>, nextIdx: number, nextSecondsLeft: number) => {
+    if (typeof window === "undefined") return;
+
+    const payload = {
+      answers: Array.from(nextAnswers.entries()),
+      currentIdx: nextIdx,
+      secondsLeft: nextSecondsLeft,
+      updatedAt: new Date().toISOString(),
+    };
+
+    localStorage.setItem(draftKey, JSON.stringify(payload));
+  };
+
+  const clearDraft = () => {
+    if (typeof window === "undefined") return;
+    localStorage.removeItem(draftKey);
+  };
 
   // ── Load evaluation ──────────────────────────────────────
   useEffect(() => {
@@ -106,6 +145,33 @@ export default function EvaluacionInduccion({
           setSecondsLeft(json.plantilla.tiempoLimite * 60);
         }
 
+        if (typeof window !== "undefined") {
+          const rawDraft = localStorage.getItem(draftKey);
+          if (rawDraft) {
+            try {
+              const parsed = JSON.parse(rawDraft) as {
+                answers?: Array<[string, string]>;
+                currentIdx?: number;
+                secondsLeft?: number;
+              };
+
+              if (Array.isArray(parsed.answers)) {
+                setAnswers(new Map(parsed.answers));
+              }
+
+              if (typeof parsed.currentIdx === "number" && parsed.currentIdx >= 0 && parsed.currentIdx < json.preguntas.length) {
+                setCurrentIdx(parsed.currentIdx);
+              }
+
+              if (json.plantilla.tiempoLimite > 0 && typeof parsed.secondsLeft === "number" && parsed.secondsLeft > 0) {
+                setSecondsLeft(parsed.secondsLeft);
+              }
+            } catch {
+              // Ignorar draft corrupto y continuar limpio
+            }
+          }
+        }
+
         setScreen("tomando");
       } catch (e) {
         setErrorMsg(e instanceof Error ? e.message : "Error cargando evaluación");
@@ -115,6 +181,11 @@ export default function EvaluacionInduccion({
 
     loadEval();
   }, [induccionId, idEmpleadoCore]);
+
+  useEffect(() => {
+    if (screen !== "tomando") return;
+    saveDraft(answers, currentIdx, secondsLeft);
+  }, [answers, currentIdx, secondsLeft, screen]);
 
   // ── Timer ───────────────────────────────────────────────
   useEffect(() => {
@@ -184,26 +255,44 @@ export default function EvaluacionInduccion({
       // Calcular puntaje
       let puntaje = 0;
       let max = 0;
+      const detalle: RespuestaDetalle[] = [];
 
       preguntas.forEach((p) => {
         max += p.puntajeAsignado;
         const respuesta = answersToSubmit.get(p.ppId);
 
-        if (!respuesta) return;
+        let esCorrecta = false;
 
-        // Para selección múltiple, comparar arrays
-        if (p.tipo === "Selección Múltiple") {
-          const respuestaArray = respuesta.split("|").sort();
-          const correctaArray = p.respuestaCorrecta.split("|").sort();
-          if (JSON.stringify(respuestaArray) === JSON.stringify(correctaArray)) {
-            puntaje += p.puntajeAsignado;
-          }
-        } else {
-          // Para selección única, comparar strings
-          if (respuesta.trim() === p.respuestaCorrecta.trim()) {
-            puntaje += p.puntajeAsignado;
+        if (respuesta) {
+          // Para selección múltiple, comparar arrays
+          if (p.tipo === "Selección Múltiple") {
+            const respuestaArray = respuesta.split("|").sort();
+            const correctaArray = p.respuestaCorrecta.split("|").sort();
+            if (JSON.stringify(respuestaArray) === JSON.stringify(correctaArray)) {
+              esCorrecta = true;
+            }
+          } else {
+            // Para selección única, comparar strings
+            if (respuesta.trim() === p.respuestaCorrecta.trim()) {
+              esCorrecta = true;
+            }
           }
         }
+
+        if (esCorrecta) {
+          puntaje += p.puntajeAsignado;
+        }
+
+        detalle.push({
+          orden: p.orden,
+          pregunta: p.texto,
+          opciones: p.opciones,
+          respuestaUsuario: respuesta ? respuesta.split("|").join(", ") : "Sin responder",
+          respuestaCorrecta: p.respuestaCorrecta.split("|").join(", "),
+          esCorrecta,
+          puntajeAsignado: p.puntajeAsignado,
+          puntajeObtenido: esCorrecta ? p.puntajeAsignado : 0,
+        });
       });
 
       const porc = max > 0 ? Math.round((puntaje / max) * 100) : 0;
@@ -214,41 +303,39 @@ export default function EvaluacionInduccion({
       setPorcentaje(porc);
       setAprobada(aprobadaResult);
 
-      // Para evaluaciones de inducción, no guardamos en Airtable
-      const esInduccion = induccionId !== undefined;
+      const resultado: ResultadoEvaluacion = {
+        puntaje: porc,
+        puntajeObtenido: puntaje,
+        puntajeMaximo: max,
+        aprobada: aprobadaResult,
+        detalle,
+      };
 
-      if (!esInduccion) {
-        // Solo guardar si NO es una inducción
-        const res = await fetch("/api/evaluaciones/responder", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            plantillaId: plantilla?.id,
-            idEmpleadoCore,
-            nombres: nombreEmpleado,
-            cedula: numeroDocumento,
-            cargo: cargo,
-            respuestas: Array.from(answersToSubmit.entries()).map(([ppId, respuesta]) => ({
-              ppId,
-              respuesta,
-            })),
-          }),
-        });
+      const res = await fetch("/api/inducciones/evaluacion", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          induccionId,
+          idEmpleadoCore,
+          puntajeEvaluacion: porc,
+          estadoEvaluacion: aprobadaResult ? "Aprobada" : "No_Presentada",
+        }),
+      });
 
-        const data = await res.json();
+      const data = await res.json();
 
-        if (!data.success) {
-          throw new Error(data.message || "Error al guardar respuestas");
-        }
+      if (!data.success) {
+        throw new Error(data.message || "Error al guardar resultado de evaluación");
       }
 
       setScreen("resultado");
+      clearDraft();
 
       // Llamar callback según resultado
       if (aprobadaResult) {
-        setTimeout(() => onAprobada(porc), 2000);
+        setTimeout(() => onAprobada(porc, resultado), 2000);
       } else {
-        setTimeout(() => onReprobada(), 2000);
+        setTimeout(() => onReprobada(resultado), 2000);
       }
     } catch (error: any) {
       console.error("[EvaluacionInduccion] Error:", error);
