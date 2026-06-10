@@ -17,6 +17,7 @@ import {
   Filter,
 } from "lucide-react";
 import type { EstadoColaborador } from "@/shared/types/inducciones";
+import { formatFechaColombia } from "@/shared/utils";
 
 type FiltroEstado = "TODOS" | "AL_DIA" | "POR_VENCER" | "VENCIDA" | "SIN_INDUCCION";
 
@@ -232,6 +233,44 @@ export default function InduccionesDashboardPage() {
           </div>
         )}
 
+        {/* Leyenda del Semáforo */}
+        <div className="bg-gradient-to-r from-blue-500/10 to-purple-500/10 backdrop-blur-xl rounded-xl border border-white/15 p-5 mb-6">
+          <h4 className="text-sm font-bold text-white/90 mb-3 flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-blue-400 animate-pulse" />
+            Leyenda del Semáforo
+          </h4>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="flex items-center gap-3 bg-white/5 rounded-lg px-3 py-2">
+              <div className="w-4 h-4 rounded-full bg-green-500 shadow-lg shadow-green-500/50" />
+              <div>
+                <p className="text-sm font-semibold text-white">Al día</p>
+                <p className="text-xs text-white/60">Vigencia &gt; 15 días</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-3 bg-white/5 rounded-lg px-3 py-2">
+              <div className="w-4 h-4 rounded-full bg-yellow-500 shadow-lg shadow-yellow-500/50" />
+              <div>
+                <p className="text-sm font-semibold text-white">Por vencer</p>
+                <p className="text-xs text-white/60">Vence en ≤ 15 días</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-3 bg-white/5 rounded-lg px-3 py-2">
+              <div className="w-4 h-4 rounded-full bg-red-500 shadow-lg shadow-red-500/50" />
+              <div>
+                <p className="text-sm font-semibold text-white">Vencida</p>
+                <p className="text-xs text-white/60">Ya expiró</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-3 bg-white/5 rounded-lg px-3 py-2">
+              <div className="w-4 h-4 rounded-full bg-gray-400 shadow-lg shadow-gray-400/50" />
+              <div>
+                <p className="text-sm font-semibold text-white">Sin inducción</p>
+                <p className="text-xs text-white/60">Nunca inductado</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
         {/* Filtros */}
         <div className="bg-white/10 backdrop-blur-xl rounded-xl border border-white/15 p-6 mb-6">
           <div className="flex flex-col md:flex-row gap-4">
@@ -317,7 +356,7 @@ export default function InduccionesDashboardPage() {
                               {col.ultimaInduccion.tipo === "Induccion" ? "Inducción" : "Reinducción"}
                             </div>
                             <div className="text-xs text-white/50">
-                              {new Date(col.ultimaInduccion.fechaRealizacion).toLocaleDateString("es-CO")}
+                              {formatFechaColombia(col.ultimaInduccion.fechaRealizacion, { format: "numeric" })}
                             </div>
                           </div>
                         ) : (
@@ -326,7 +365,7 @@ export default function InduccionesDashboardPage() {
                       </td>
                       <td className="px-6 py-4 text-white/70 text-sm">
                         {col.ultimaInduccion ? (
-                          new Date(col.ultimaInduccion.fechaVencimiento).toLocaleDateString("es-CO")
+                          formatFechaColombia(col.ultimaInduccion.fechaVencimiento, { format: "numeric" })
                         ) : (
                           <span className="text-white/40">—</span>
                         )}
@@ -352,21 +391,21 @@ export default function InduccionesDashboardPage() {
                       </td>
                       <td className="px-6 py-4 text-center">
                         <div className="flex items-center justify-center gap-2">
-                          {col.tieneInduccion ? (
-                            <button
-                              onClick={() => router.push(`/dashboard/inducciones/colaborador/${col.idEmpleadoCore}`)}
-                              className="text-blue-400 hover:text-blue-300 text-sm font-medium"
-                            >
-                              Ver historial
-                            </button>
-                          ) : (
-                            <button
-                              onClick={() => router.push(`/dashboard/inducciones/nueva?emp=${col.idEmpleadoCore}`)}
-                              className="text-emerald-400 hover:text-emerald-300 text-sm font-medium"
-                            >
-                              Registrar
-                            </button>
-                          )}
+                          <button
+                            onClick={() => router.push(`/dashboard/inducciones/nueva?emp=${col.idEmpleadoCore}`)}
+                            className="text-emerald-400 hover:text-emerald-300 text-sm font-medium"
+                            title="Registrar nueva inducción"
+                          >
+                            Registrar
+                          </button>
+                          <span className="text-white/20">|</span>
+                          <button
+                            onClick={() => router.push(`/dashboard/inducciones/colaborador/${col.idEmpleadoCore}`)}
+                            className="text-blue-400 hover:text-blue-300 text-sm font-medium"
+                            title="Ver historial completo"
+                          >
+                            Historial
+                          </button>
                         </div>
                       </td>
                     </tr>
@@ -377,28 +416,6 @@ export default function InduccionesDashboardPage() {
           </div>
         </div>
 
-        {/* Leyenda del Semáforo */}
-        <div className="mt-6 bg-white/5 backdrop-blur rounded-xl border border-white/10 p-4">
-          <h4 className="text-sm font-semibold text-white/70 mb-3">Leyenda del semáforo:</h4>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div className="flex items-center gap-2">
-              <div className="w-3 h-3 rounded-full bg-green-500" />
-              <span className="text-sm text-white/70">Al día: Vigencia mayor a 15 días</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="w-3 h-3 rounded-full bg-yellow-500" />
-              <span className="text-sm text-white/70">Por vencer: Vence en 15 días o menos</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="w-3 h-3 rounded-full bg-red-500" />
-              <span className="text-sm text-white/70">Vencida: Pasó la fecha de vencimiento</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="w-3 h-3 rounded-full bg-gray-400" />
-              <span className="text-sm text-white/70">Sin inducción: Nunca ha sido inductado</span>
-            </div>
-          </div>
-        </div>
       </main>
     </div>
   );

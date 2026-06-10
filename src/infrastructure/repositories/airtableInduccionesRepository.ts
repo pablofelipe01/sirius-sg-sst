@@ -47,7 +47,7 @@ export class AirtableInduccionesRepository {
     const params = new URLSearchParams({ pageSize: "100" });
 
     if (filterByStatus) {
-      params.append("filterByFormula", `{${RF.ESTADO}} = '${filterByStatus}'`);
+      params.append("filterByFormula", `{Estado} = '${filterByStatus}'`);
     }
 
     const response = await fetch(`${url}?${params}`, {
@@ -87,7 +87,7 @@ export class AirtableInduccionesRepository {
   async obtenerRegistroPorIdInduccion(idInduccion: string): Promise<RegistroInduccion | null> {
     const url = `${this.client.baseUrl}/${this.registrosTableId}`;
     const params = new URLSearchParams({
-      filterByFormula: `{${RF.ID_INDUCCION}} = '${idInduccion}'`,
+      filterByFormula: `{ID_Induccion} = '${idInduccion}'`,
       maxRecords: "1",
     });
 
@@ -110,12 +110,12 @@ export class AirtableInduccionesRepository {
    */
   async listarPorEmpleado(idEmpleadoCore: string): Promise<RegistroInduccion[]> {
     const url = `${this.client.baseUrl}/${this.registrosTableId}`;
-    const params = new URLSearchParams({
-      filterByFormula: `{${RF.ID_EMPLEADO_CORE}} = '${idEmpleadoCore}'`,
-      sort: `[{field: '${RF.FECHA_REALIZACION}', direction: 'desc'}]`,
-    });
 
-    const response = await fetch(`${url}?${params}`, {
+    // Sin sort por ahora, solo filtro
+    const filterFormula = encodeURIComponent(`{ID_Empleado_CORE} = '${idEmpleadoCore}'`);
+    const fullUrl = `${url}?filterByFormula=${filterFormula}`;
+
+    const response = await fetch(fullUrl, {
       headers: this.client.headers,
     });
 
@@ -232,15 +232,40 @@ export class AirtableInduccionesRepository {
       now.getTime() + induccionesModuleConfig.tokenExpiracionHoras * 60 * 60 * 1000
     );
 
+    // Generar JWT simple (base64 + firma)
+    const crypto = require("crypto");
+    const secret = process.env.JWT_SECRET || "default-secret";
+    const tokenPayload = {
+      induccionId,
+      idEmpleadoCore,
+      tokenId,
+      exp: expiracion.getTime(),
+    };
+    const payloadB64 = Buffer.from(JSON.stringify(tokenPayload)).toString("base64url");
+    const signature = crypto
+      .createHmac("sha256", secret)
+      .update(payloadB64)
+      .digest("base64url")
+      .substring(0, 32);
+    const hashFirma = `${payloadB64}.${signature}`;
+
+    // Obtener el record ID del registro para enlazarlo (campo linked-record)
+    const registro = await this.obtenerRegistroPorIdInduccion(induccionId);
+
     const url = `${this.client.baseUrl}/${this.tokensTableId}`;
     const payload = {
       fields: {
         [TF.TOKEN_ID]: tokenId,
         [TF.INDUCCION_ID]: induccionId,
         [TF.ID_EMPLEADO_CORE]: idEmpleadoCore,
+        [TF.HASH_FIRMA]: hashFirma,
         [TF.FECHA_GENERACION]: now.toISOString(),
         [TF.FECHA_EXPIRACION]: expiracion.toISOString(),
         [TF.ESTADO_TOKEN]: "Pendiente",
+        // Enlazar token con el registro de inducción (linked record)
+        ...(registro?.id && TF.REGISTROS_LINK
+          ? { [TF.REGISTROS_LINK]: [registro.id] }
+          : {}),
       },
     };
 
@@ -265,7 +290,7 @@ export class AirtableInduccionesRepository {
   async obtenerTokenPorId(tokenId: string): Promise<TokenFirma | null> {
     const url = `${this.client.baseUrl}/${this.tokensTableId}`;
     const params = new URLSearchParams({
-      filterByFormula: `{${TF.TOKEN_ID}} = '${tokenId}'`,
+      filterByFormula: `{Token_ID} = '${tokenId}'`,
       maxRecords: "1",
     });
 
@@ -284,20 +309,45 @@ export class AirtableInduccionesRepository {
   }
 
   /**
+   * Obtener token por Hash de Firma (el JWT token propiamente)
+   */
+  async obtenerTokenPorHash(hashFirma: string): Promise<TokenFirma | null> {
+    const url = `${this.client.baseUrl}/${this.tokensTableId}`;
+    const params = new URLSearchParams({
+      filterByFormula: `{Hash_Firma} = '${hashFirma}'`,
+      maxRecords: "1",
+    });
+
+    const response = await fetch(`${url}?${params}`, {
+      headers: this.client.headers,
+    });
+
+    if (!response.ok) {
+      throw new Error(`Error buscando token por hash: ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    if (data.records.length === 0) return null;
+
+    return this.mapRecordToToken(data.records[0]);
+  }
+
+  /**
    * Actualizar estado del token y guardar firma
    */
   async actualizarToken(
     recordId: string,
-    estado: EstadoToken,
-    hashFirma?: string
+    updates: { estadoToken?: EstadoToken; hashFirma?: string }
   ): Promise<TokenFirma> {
     const url = `${this.client.baseUrl}/${this.tokensTableId}/${recordId}`;
-    const fields: any = {
-      [TF.ESTADO_TOKEN]: estado,
-    };
+    const fields: any = {};
 
-    if (hashFirma) {
-      fields[TF.HASH_FIRMA] = hashFirma;
+    if (updates.estadoToken) {
+      fields[TF.ESTADO_TOKEN] = updates.estadoToken;
+    }
+
+    if (updates.hashFirma) {
+      fields[TF.HASH_FIRMA] = updates.hashFirma;
     }
 
     const response = await fetch(url, {
@@ -368,8 +418,8 @@ export class AirtableInduccionesRepository {
     const hoy = new Date().toISOString().split("T")[0];
     const url = `${this.client.baseUrl}/${this.alertasTableId}`;
     const params = new URLSearchParams({
-      filterByFormula: `AND({${AF.ENVIADA}} = FALSE(), {${AF.FECHA_ALERTA}} <= '${hoy}')`,
-      sort: `[{field: '${AF.FECHA_ALERTA}', direction: 'asc'}]`,
+      filterByFormula: `AND({Enviada} = FALSE(), {Fecha_Alerta} <= '${hoy}')`,
+      sort: JSON.stringify([{field: 'Fecha_Alerta', direction: 'asc'}]),
     });
 
     const response = await fetch(`${url}?${params}`, {
@@ -416,7 +466,7 @@ export class AirtableInduccionesRepository {
   private async obtenerUltimoIdInduccion(): Promise<string | null> {
     const url = `${this.client.baseUrl}/${this.registrosTableId}`;
     const params = new URLSearchParams({
-      sort: `[{field: '${RF.ID_INDUCCION}', direction: 'desc'}]`,
+      sort: JSON.stringify([{field: 'ID_Induccion', direction: 'desc'}]),
       maxRecords: "1",
     });
 
@@ -426,13 +476,13 @@ export class AirtableInduccionesRepository {
 
     if (!response.ok) return null;
     const data = await response.json();
-    return data.records.length > 0 ? data.records[0].fields[RF.ID_INDUCCION] : null;
+    return data.records.length > 0 ? (data.records[0].fields["ID_Induccion"] || data.records[0].fields[RF.ID_INDUCCION]) : null;
   }
 
   private async obtenerUltimoIdToken(): Promise<string | null> {
     const url = `${this.client.baseUrl}/${this.tokensTableId}`;
     const params = new URLSearchParams({
-      sort: `[{field: '${TF.TOKEN_ID}', direction: 'desc'}]`,
+      sort: JSON.stringify([{field: 'Token_ID', direction: 'desc'}]),
       maxRecords: "1",
     });
 
@@ -442,13 +492,13 @@ export class AirtableInduccionesRepository {
 
     if (!response.ok) return null;
     const data = await response.json();
-    return data.records.length > 0 ? data.records[0].fields[TF.TOKEN_ID] : null;
+    return data.records.length > 0 ? (data.records[0].fields["Token_ID"] || data.records[0].fields[TF.TOKEN_ID]) : null;
   }
 
   private async obtenerUltimoIdAlerta(): Promise<string | null> {
     const url = `${this.client.baseUrl}/${this.alertasTableId}`;
     const params = new URLSearchParams({
-      sort: `[{field: '${AF.ID_ALERTA}', direction: 'desc'}]`,
+      sort: JSON.stringify([{field: 'ID_Alerta', direction: 'desc'}]),
       maxRecords: "1",
     });
 
@@ -458,32 +508,34 @@ export class AirtableInduccionesRepository {
 
     if (!response.ok) return null;
     const data = await response.json();
-    return data.records.length > 0 ? data.records[0].fields[AF.ID_ALERTA] : null;
+    return data.records.length > 0 ? (data.records[0].fields["ID_Alerta"] || data.records[0].fields[AF.ID_ALERTA]) : null;
   }
 
   // ── MAPPERS ────────────────────────────────────────────────
 
   private mapRecordToRegistro(record: any): RegistroInduccion {
     const f = record.fields;
+
+    // Usar nombres de campos directamente (Airtable devuelve nombres, no IDs)
     return {
       id: record.id,
-      idInduccion: f[RF.ID_INDUCCION],
-      idEmpleadoCore: f[RF.ID_EMPLEADO_CORE],
-      nombreEmpleado: f[RF.NOMBRE_EMPLEADO],
-      numeroDocumento: f[RF.NUMERO_DOCUMENTO],
-      cargo: f[RF.CARGO],
-      tipo: f[RF.TIPO],
-      fechaRealizacion: f[RF.FECHA_REALIZACION],
-      fechaVencimiento: f[RF.FECHA_VENCIMIENTO],
-      responsableSST: f[RF.RESPONSABLE_SST],
-      evaluacionId: f[RF.EVALUACION_ID] || null,
-      puntajeEvaluacion: f[RF.PUNTAJE_EVALUACION] || null,
-      estadoEvaluacion: f[RF.ESTADO_EVALUACION] || "Pendiente",
-      firmaUrl: f[RF.FIRMA_URL] || null,
-      certificadoUrl: f[RF.CERTIFICADO_URL] || null,
-      fechaExportacion: f[RF.FECHA_EXPORTACION] || null,
-      estado: f[RF.ESTADO] || "En_Proceso",
-      observaciones: f[RF.OBSERVACIONES] || null,
+      idInduccion: f["ID_Induccion"] || f[RF.ID_INDUCCION],
+      idEmpleadoCore: f["ID_Empleado_CORE"] || f[RF.ID_EMPLEADO_CORE],
+      nombreEmpleado: f["Nombre_Empleado"] || f[RF.NOMBRE_EMPLEADO],
+      numeroDocumento: f["Numero_Documento"] || f[RF.NUMERO_DOCUMENTO],
+      cargo: f["Cargo"] || f[RF.CARGO],
+      tipo: f["Tipo"] || f[RF.TIPO],
+      fechaRealizacion: f["Fecha_Realizacion"] || f[RF.FECHA_REALIZACION],
+      fechaVencimiento: f["Fecha_Vencimiento"] || f[RF.FECHA_VENCIMIENTO],
+      responsableSST: f["Responsable_SST"] || f[RF.RESPONSABLE_SST],
+      evaluacionId: f["Evaluacion_ID"] || f[RF.EVALUACION_ID] || null,
+      puntajeEvaluacion: f["Puntaje_Evaluacion"] || f[RF.PUNTAJE_EVALUACION] || null,
+      estadoEvaluacion: f["Estado_Evaluacion"] || f[RF.ESTADO_EVALUACION] || "Pendiente",
+      firmaUrl: f["Firma_URL"] || f[RF.FIRMA_URL] || null,
+      certificadoUrl: f["Certificado_URL"] || f[RF.CERTIFICADO_URL] || null,
+      fechaExportacion: f["Fecha_Exportacion"] || f[RF.FECHA_EXPORTACION] || null,
+      estado: f["Estado"] || f[RF.ESTADO] || "En_Proceso",
+      observaciones: f["Observaciones"] || f[RF.OBSERVACIONES] || null,
     };
   }
 
@@ -491,13 +543,13 @@ export class AirtableInduccionesRepository {
     const f = record.fields;
     return {
       id: record.id,
-      tokenId: f[TF.TOKEN_ID],
-      induccionId: f[TF.INDUCCION_ID],
-      idEmpleadoCore: f[TF.ID_EMPLEADO_CORE],
-      hashFirma: f[TF.HASH_FIRMA] || null,
-      fechaGeneracion: f[TF.FECHA_GENERACION],
-      fechaExpiracion: f[TF.FECHA_EXPIRACION],
-      estadoToken: f[TF.ESTADO_TOKEN] || "Pendiente",
+      tokenId: f["Token_ID"] || f[TF.TOKEN_ID],
+      induccionId: f["Induccion_ID"] || f[TF.INDUCCION_ID],
+      idEmpleadoCore: f["ID_Empleado_CORE"] || f[TF.ID_EMPLEADO_CORE],
+      hashFirma: f["Hash_Firma"] || f[TF.HASH_FIRMA] || null,
+      fechaGeneracion: f["Fecha_Generacion"] || f[TF.FECHA_GENERACION],
+      fechaExpiracion: f["Fecha_Expiracion"] || f[TF.FECHA_EXPIRACION],
+      estadoToken: f["Estado_Token"] || f[TF.ESTADO_TOKEN] || "Pendiente",
     };
   }
 
@@ -505,17 +557,17 @@ export class AirtableInduccionesRepository {
     const f = record.fields;
     return {
       id: record.id,
-      idAlerta: f[AF.ID_ALERTA],
-      induccionId: f[AF.INDUCCION_ID],
-      idEmpleadoCore: f[AF.ID_EMPLEADO_CORE],
-      nombreEmpleado: f[AF.NOMBRE_EMPLEADO],
-      fechaVencimiento: f[AF.FECHA_VENCIMIENTO],
-      fechaAlerta: f[AF.FECHA_ALERTA],
-      tipoAlerta: f[AF.TIPO_ALERTA] || "15_DIAS",
-      enviada: f[AF.ENVIADA] || false,
-      fechaEnvio: f[AF.FECHA_ENVIO] || null,
-      correoDestino: f[AF.CORREO_DESTINO] || null,
-      observacionesEnvio: f[AF.OBSERVACIONES_ENVIO] || null,
+      idAlerta: f["ID_Alerta"] || f[AF.ID_ALERTA],
+      induccionId: f["Induccion_ID"] || f[AF.INDUCCION_ID],
+      idEmpleadoCore: f["ID_Empleado_CORE"] || f[AF.ID_EMPLEADO_CORE],
+      nombreEmpleado: f["Nombre_Empleado"] || f[AF.NOMBRE_EMPLEADO],
+      fechaVencimiento: f["Fecha_Vencimiento"] || f[AF.FECHA_VENCIMIENTO],
+      fechaAlerta: f["Fecha_Alerta"] || f[AF.FECHA_ALERTA],
+      tipoAlerta: f["Tipo_Alerta"] || f[AF.TIPO_ALERTA] || "15_DIAS",
+      enviada: f["Enviada"] || f[AF.ENVIADA] || false,
+      fechaEnvio: f["Fecha_Envio"] || f[AF.FECHA_ENVIO] || null,
+      correoDestino: f["Correo_Destino"] || f[AF.CORREO_DESTINO] || null,
+      observacionesEnvio: f["Observaciones_Envio"] || f[AF.OBSERVACIONES_ENVIO] || null,
     };
   }
 }

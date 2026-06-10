@@ -5,6 +5,8 @@
 // ══════════════════════════════════════════════════════════
 
 import { NextRequest, NextResponse } from "next/server";
+import { induccionesRepository } from "@/infrastructure/repositories/airtableInduccionesRepository";
+import type { EstadoEvaluacion } from "@/shared/types/inducciones";
 
 export async function GET(request: NextRequest) {
   const induccionId = request.nextUrl.searchParams.get("induccionId");
@@ -508,6 +510,80 @@ export async function GET(request: NextRequest) {
     });
   } catch (error: any) {
     console.error("[Inducción Eval] Error:", error);
+    return NextResponse.json(
+      { success: false, message: error.message || "Error interno del servidor" },
+      { status: 500 }
+    );
+  }
+}
+
+// POST /api/inducciones/evaluacion
+// Guarda el resultado final de la evaluación en el registro de inducción
+export async function POST(request: NextRequest) {
+  try {
+    const body = await request.json();
+    const {
+      induccionId,
+      idEmpleadoCore,
+      puntajeEvaluacion,
+      estadoEvaluacion,
+    } = body as {
+      induccionId?: string;
+      idEmpleadoCore?: string;
+      puntajeEvaluacion?: number;
+      estadoEvaluacion?: EstadoEvaluacion;
+    };
+
+    if (!induccionId || !idEmpleadoCore) {
+      return NextResponse.json(
+        { success: false, message: "induccionId y idEmpleadoCore son requeridos" },
+        { status: 400 }
+      );
+    }
+
+    if (typeof puntajeEvaluacion !== "number" || Number.isNaN(puntajeEvaluacion) || puntajeEvaluacion < 0 || puntajeEvaluacion > 100) {
+      return NextResponse.json(
+        { success: false, message: "puntajeEvaluacion debe ser un número entre 0 y 100" },
+        { status: 400 }
+      );
+    }
+
+    const estadosValidos: EstadoEvaluacion[] = ["Aprobada", "Pendiente", "No_Presentada"];
+    if (!estadoEvaluacion || !estadosValidos.includes(estadoEvaluacion)) {
+      return NextResponse.json(
+        { success: false, message: "estadoEvaluacion inválido" },
+        { status: 400 }
+      );
+    }
+
+    const registro = await induccionesRepository.obtenerRegistroPorIdInduccion(induccionId);
+
+    if (!registro || !registro.id) {
+      return NextResponse.json(
+        { success: false, message: "Inducción no encontrada" },
+        { status: 404 }
+      );
+    }
+
+    if (registro.idEmpleadoCore !== idEmpleadoCore) {
+      return NextResponse.json(
+        { success: false, message: "El empleado no coincide con la inducción" },
+        { status: 403 }
+      );
+    }
+
+    const actualizado = await induccionesRepository.actualizarRegistro(registro.id, {
+      puntajeEvaluacion,
+      estadoEvaluacion,
+    });
+
+    return NextResponse.json({
+      success: true,
+      message: "Resultado de evaluación guardado",
+      data: actualizado,
+    });
+  } catch (error: any) {
+    console.error("[Inducción Eval][POST] Error:", error);
     return NextResponse.json(
       { success: false, message: error.message || "Error interno del servidor" },
       { status: 500 }

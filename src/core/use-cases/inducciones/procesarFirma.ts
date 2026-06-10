@@ -3,17 +3,32 @@
 // Valida token, guarda firma en S3, actualiza registro
 // ══════════════════════════════════════════════════════════
 
+import crypto from "crypto";
 import { induccionesRepository } from "@/infrastructure/repositories/airtableInduccionesRepository";
-import { uploadToS3 } from "@/infrastructure/config/awsS3";
-import { induccionesModuleConfig } from "@/infrastructure/config/airtableInducciones";
 import type { RegistroInduccion } from "@/shared/types/inducciones";
 
+// ── AES-256-CBC Encryption ──────────────────────────────
+const AES_SECRET = process.env.AES_SIGNATURE_SECRET || "";
+
+function encryptAES(plaintext: string): string {
+  const key = crypto.createHash("sha256").update(AES_SECRET).digest();
+  const iv = crypto.randomBytes(16);
+  const cipher = crypto.createCipheriv("aes-256-cbc", key, iv);
+  let encrypted = cipher.update(plaintext, "utf8", "base64");
+  encrypted += cipher.final("base64");
+  return iv.toString("base64") + ":" + encrypted;
+}
+
 export async function procesarFirma(
-  tokenId: string,
+  tokenJWT: string,
   firmaDataUrl: string
 ): Promise<RegistroInduccion> {
-  // 1. Obtener y validar el token
-  const token = await induccionesRepository.obtenerTokenPorId(tokenId);
+  if (!AES_SECRET) {
+    throw new Error("Error de configuración del servidor");
+  }
+
+  // 1. Obtener y validar el token por hashFirma (JWT)
+  const token = await induccionesRepository.obtenerTokenPorHash(tokenJWT);
 
   if (!token) {
     throw new Error("Token no encontrado");
@@ -33,7 +48,7 @@ export async function procesarFirma(
 
   if (ahora > expiracion) {
     // Marcar como expirado
-    await induccionesRepository.actualizarToken(token.id!, "Expirado");
+    await induccionesRepository.actualizarToken(token.id!, { estadoToken: "Expirado" });
     throw new Error("Este token ha expirado");
   }
 
@@ -44,20 +59,25 @@ export async function procesarFirma(
     throw new Error("Inducción no encontrada");
   }
 
-  // 3. Convertir data URL a buffer
-  const base64Data = firmaDataUrl.split(",")[1];
-  const buffer = Buffer.from(base64Data, "base64");
+  // 3. Encriptar firma con AES-256-CBC
+  const firmaPayload = JSON.stringify({
+    signature: firmaDataUrl,
+    employee: token.idEmpleadoCore,
+    induccion: registro.idInduccion,
+    nombre: registro.nombreEmpleado,
+    timestamp: new Date().toISOString(),
+    source: "remote-link",
+  });
+  const firmaEncriptada = encryptAES(firmaPayload);
 
-  // 4. Subir firma a S3
-  const s3Key = `${induccionesModuleConfig.s3PrefixFirmas}/${registro.idInduccion}-${Date.now()}.png`;
-  const { url: firmaUrl } = await uploadToS3(s3Key, buffer, "image/png");
+  // 4. Actualizar token (marcar como usado)
+  await induccionesRepository.actualizarToken(token.id!, {
+    estadoToken: "Usado",
+  });
 
-  // 5. Actualizar token (marcar como usado y guardar hash)
-  await induccionesRepository.actualizarToken(token.id!, "Usado", firmaDataUrl);
-
-  // 6. Actualizar registro de inducción
+  // 5. Actualizar registro de inducción con firma encriptada
   const registroActualizado = await induccionesRepository.actualizarRegistro(registro.id!, {
-    firmaUrl,
+    firmaUrl: firmaEncriptada, // Ahora guarda la firma encriptada, no una URL
     estado: "Completada", // Pasa a completada tras la firma
   });
 

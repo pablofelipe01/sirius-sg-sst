@@ -26,7 +26,7 @@ export type TipoAlerta = z.infer<typeof TipoAlertaEnum>;
 export const RegistroInduccionSchema = z.object({
   id: z.string().optional(), // Record ID de Airtable
   idInduccion: z.string().regex(/^IND-\d{4}$/), // Formato IND-XXXX
-  idEmpleadoCore: z.string().regex(/^SIRIUS-PER-\d{4}$/), // FK a Personal
+  idEmpleadoCore: z.string().min(3), // ID Empleado (SIRIUS-PER-XXXX) o record ID legacy
   nombreEmpleado: z.string().min(3),
   numeroDocumento: z.string().min(5),
   cargo: z.string().min(2),
@@ -51,7 +51,7 @@ export const TokenFirmaSchema = z.object({
   id: z.string().optional(), // Record ID de Airtable
   tokenId: z.string().regex(/^TKNI-\d{4}$/), // Formato TKNI-XXXX
   induccionId: z.string().regex(/^IND-\d{4}$/),
-  idEmpleadoCore: z.string().regex(/^SIRIUS-PER-\d{4}$/),
+  idEmpleadoCore: z.string().min(3), // ID Empleado (SIRIUS-PER-XXXX) o record ID legacy
   hashFirma: z.string().optional().nullable(), // Data URL base64
   fechaGeneracion: z.string(), // ISO datetime
   fechaExpiracion: z.string(), // ISO datetime
@@ -65,7 +65,7 @@ export const AlertaLogSchema = z.object({
   id: z.string().optional(), // Record ID de Airtable
   idAlerta: z.string().regex(/^ALERTA-IND-\d{4}$/), // Formato ALERTA-IND-XXXX
   induccionId: z.string().regex(/^IND-\d{4}$/),
-  idEmpleadoCore: z.string().regex(/^SIRIUS-PER-\d{4}$/),
+  idEmpleadoCore: z.string().min(3), // ID Empleado (SIRIUS-PER-XXXX) o record ID legacy
   nombreEmpleado: z.string().min(3),
   fechaVencimiento: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   fechaAlerta: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
@@ -82,7 +82,7 @@ export type AlertaLog = z.infer<typeof AlertaLogSchema>;
 
 // Crear nueva inducción
 export const CrearInduccionDTOSchema = z.object({
-  idEmpleadoCore: z.string().regex(/^SIRIUS-PER-\d{4}$/),
+  idEmpleadoCore: z.string().min(3), // ID Empleado (SIRIUS-PER-XXXX) o record ID legacy
   tipo: TipoInduccionEnum,
   fechaRealizacion: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   responsableSST: z.string().min(3),
@@ -107,7 +107,7 @@ export type ActualizarInduccionDTO = z.infer<typeof ActualizarInduccionDTOSchema
 
 // Firmar inducción
 export const FirmarInduccionDTOSchema = z.object({
-  token: z.string().regex(/^TKNI-\d{4}$/),
+  token: z.string().min(10), // JWT o token string
   firmaDataUrl: z.string().startsWith("data:image/"), // Base64 data URL
 });
 
@@ -115,7 +115,7 @@ export type FirmarInduccionDTO = z.infer<typeof FirmarInduccionDTOSchema>;
 
 // Estado del colaborador (para dashboard)
 export const EstadoColaboradorSchema = z.object({
-  idEmpleadoCore: z.string().regex(/^SIRIUS-PER-\d{4}$/),
+  idEmpleadoCore: z.string().min(3), // ID Empleado (SIRIUS-PER-XXXX) o record ID legacy
   nombreCompleto: z.string(),
   numeroDocumento: z.string(),
   cargo: z.string(),

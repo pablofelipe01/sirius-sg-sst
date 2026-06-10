@@ -61,6 +61,19 @@ export const airtableInduccionesConfig = {
     CORREO_DESTINO: process.env.AIRTABLE_IND_ALR_CORREO_DESTINO!,
     OBSERVACIONES_ENVIO: process.env.AIRTABLE_IND_ALR_OBSERVACIONES_ENVIO!,
   },
+
+  // ── Tabla "Constancias_Inducciones" — Datos de constancia ─
+  constanciasTableId: process.env.AIRTABLE_IND_CONSTANCIAS_TABLE_ID!,
+  constanciasFields: {
+    ID_CONSTANCIA: process.env.AIRTABLE_IND_CONST_ID_CONSTANCIA!,
+    ID_INDUCCION: process.env.AIRTABLE_IND_CONST_ID_INDUCCION!,
+    FECHA_REALIZACION: process.env.AIRTABLE_IND_CONST_FECHA_REALIZACION!,
+    LUGAR_REALIZACION: process.env.AIRTABLE_IND_CONST_LUGAR_REALIZACION!,
+    HORA_INICIO: process.env.AIRTABLE_IND_CONST_HORA_INICIO!,
+    HORA_FIN: process.env.AIRTABLE_IND_CONST_HORA_FIN!,
+    RESPONSABLE_SST: process.env.AIRTABLE_IND_CONST_RESPONSABLE_SST!,
+    OBSERVACIONES: process.env.AIRTABLE_IND_CONST_OBSERVACIONES!,
+  },
 };
 
 // ── Helper: Crear cliente Airtable ──────────────────────────

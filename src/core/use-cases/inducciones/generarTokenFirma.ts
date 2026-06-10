@@ -17,13 +17,24 @@ export async function generarTokenFirma(
     throw new Error("Inducción no encontrada");
   }
 
-  // Verificar que la inducción está en estado correcto para firma
-  if (registro.estado !== "Pendiente_Firma") {
-    throw new Error(`La inducción debe estar en estado Pendiente_Firma. Estado actual: ${registro.estado}`);
+  // Si está en "En_Proceso", cambiar a "Pendiente_Firma"
+  if (registro.estado === "En_Proceso") {
+    await induccionesRepository.actualizarRegistro(registro.id!, {
+      estado: "Pendiente_Firma",
+    });
+  } else if (registro.estado !== "Pendiente_Firma") {
+    throw new Error(`La inducción ya está ${registro.estado}`);
   }
 
   // Generar el token
   const token = await induccionesRepository.crearTokenFirma(idInduccion, idEmpleadoCore);
 
-  return token;
+  // Construir URL de firma
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+  const urlFirma = `${baseUrl}/inducciones/firma/${token.hashFirma}`;
+
+  return {
+    ...token,
+    urlFirma,
+  } as any;
 }

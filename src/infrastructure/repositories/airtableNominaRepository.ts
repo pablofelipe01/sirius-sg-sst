@@ -4,7 +4,7 @@
 // ══════════════════════════════════════════════════════════
 
 export interface EmpleadoNomina {
-  idEmpleadoCore: string; // Record ID del empleado en Personal
+  idEmpleadoCore: string; // Campo ID Empleado (SIRIUS-PER-XXXX) del empleado en Personal
   nombreCompleto: string;
   numeroDocumento: string;
   cargo: string;
@@ -152,8 +152,11 @@ export class AirtableNominaRepository {
       const data = await response.json();
       console.log("[NominaRepo] Registros Personal obtenidos:", data.records.length);
 
-      const personalMap = new Map<string, { documento: string; cargo: string; estadoActividad: string }>(
+      const personalMap = new Map<string, { idEmpleado: string; documento: string; cargo: string; estadoActividad: string }>(
         data.records.map((r: any) => {
+          // ID Empleado es el código único (SIRIUS-PER-XXXX). Fallback al record ID si está vacío.
+          const idEmpleado = (r.fields["ID Empleado"] as string) || r.id;
+
           // Documento es un string directo
           const documento = r.fields["Numero Documento"] as string || "";
 
@@ -166,8 +169,8 @@ export class AirtableNominaRepository {
 
           return [
             r.id,
-            { documento, cargo, estadoActividad },
-          ] as [string, { documento: string; cargo: string; estadoActividad: string }];
+            { idEmpleado, documento, cargo, estadoActividad },
+          ] as [string, { idEmpleado: string; documento: string; cargo: string; estadoActividad: string }];
         })
       );
 
@@ -183,6 +186,7 @@ export class AirtableNominaRepository {
 
           empleadosCompletos.push({
             ...emp,
+            idEmpleadoCore: datos.idEmpleado, // Usar el campo ID Empleado en lugar del record ID
             numeroDocumento: datos.documento || "",
             cargo: datos.cargo || "Sin cargo",
           });
@@ -196,12 +200,19 @@ export class AirtableNominaRepository {
   }
 
   /**
-   * Obtener datos de un empleado específico por su Record ID
+   * Obtener datos de un empleado específico por su ID Empleado (SIRIUS-PER-XXXX)
    */
-  async obtenerEmpleadoPorId(recordId: string): Promise<EmpleadoNomina | null> {
-    const url = `${this.baseUrl}/${this.baseId}/${this.personalTableId}/${recordId}`;
+  async obtenerEmpleadoPorId(idEmpleado: string): Promise<EmpleadoNomina | null> {
+    // Compatibilidad: si llega un record ID antiguo (rec...), buscar directamente por record ID
+    if (idEmpleado.startsWith("rec")) {
+      return this.obtenerEmpleadoPorRecordId(idEmpleado);
+    }
 
-    console.log("[NominaRepo] Obteniendo empleado por ID:", recordId);
+    // Buscar por el campo ID Empleado (SIRIUS-PER-XXXX)
+    const filterFormula = encodeURIComponent(`{ID Empleado} = '${idEmpleado}'`);
+    const url = `${this.baseUrl}/${this.baseId}/${this.personalTableId}?filterByFormula=${filterFormula}`;
+
+    console.log("[NominaRepo] Obteniendo empleado por ID Empleado:", idEmpleado);
 
     const response = await fetch(url, {
       headers: {
@@ -211,16 +222,21 @@ export class AirtableNominaRepository {
     });
 
     if (!response.ok) {
-      if (response.status === 404) {
-        console.warn("[NominaRepo] Empleado no encontrado:", recordId);
-        return null;
-      }
-      throw new Error(`Error obteniendo empleado: ${await response.text()}`);
+      console.error("[NominaRepo] Error obteniendo empleado:", await response.text());
+      return null;
     }
 
-    const record = await response.json();
+    const data = await response.json();
+    
+    if (!data.records || data.records.length === 0) {
+      console.warn("[NominaRepo] Empleado no encontrado:", idEmpleado);
+      return null;
+    }
+
+    const record = data.records[0];
     const fields = record.fields;
 
+    const idEmpleadoField = (fields["ID Empleado"] as string) || record.id;
     const nombreCompleto = fields["Nombre completo"] as string;
     const numeroDocumento = fields["Numero Documento"] as string || "";
     const rolesLookup = fields["Rol (from Rol)"] as string[] | undefined;
@@ -234,7 +250,53 @@ export class AirtableNominaRepository {
     }
 
     return {
-      idEmpleadoCore: record.id,
+      idEmpleadoCore: idEmpleadoField, // Usar el campo ID Empleado (SIRIUS-PER-XXXX)
+      nombreCompleto,
+      numeroDocumento,
+      cargo,
+      estado: estadoActividad,
+    };
+  }
+
+  /**
+   * Obtener datos de un empleado por su Record ID de Airtable (compatibilidad)
+   */
+  private async obtenerEmpleadoPorRecordId(recordId: string): Promise<EmpleadoNomina | null> {
+    const url = `${this.baseUrl}/${this.baseId}/${this.personalTableId}/${recordId}`;
+
+    const response = await fetch(url, {
+      headers: {
+        Authorization: `Bearer ${this.apiToken}`,
+        "Content-Type": "application/json",
+      },
+    });
+
+    if (!response.ok) {
+      if (response.status === 404) {
+        console.warn("[NominaRepo] Empleado no encontrado (record ID):", recordId);
+        return null;
+      }
+      console.error("[NominaRepo] Error obteniendo empleado por record ID:", await response.text());
+      return null;
+    }
+
+    const record = await response.json();
+    const fields = record.fields;
+
+    const idEmpleadoField = (fields["ID Empleado"] as string) || record.id;
+    const nombreCompleto = fields["Nombre completo"] as string;
+    const numeroDocumento = fields["Numero Documento"] as string || "";
+    const rolesLookup = fields["Rol (from Rol)"] as string[] | undefined;
+    const cargo = rolesLookup && rolesLookup.length > 0 ? rolesLookup[0] : "Sin cargo";
+    const estadoActividad = fields["Estado de actividad"] as string;
+
+    if (estadoActividad !== "Activo") {
+      console.log("[NominaRepo] Empleado no activo:", nombreCompleto, "- Estado:", estadoActividad);
+      return null;
+    }
+
+    return {
+      idEmpleadoCore: idEmpleadoField,
       nombreCompleto,
       numeroDocumento,
       cargo,

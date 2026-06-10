@@ -93,7 +93,40 @@ export async function GET(
       );
     }
 
-    // 6. Devolver datos necesarios para la firma
+    // 6. Buscar fecha de ingreso en tabla Nómina
+    let fechaIngreso: string | undefined;
+    try {
+      const nominaBaseId = process.env.AIRTABLE_NOMINA_CORE_BASE_ID || process.env.AIRTABLE_BASE_ID;
+      const nominaTableId = process.env.AIRTABLE_NOMINA_TABLE_ID;
+
+      if (nominaBaseId && nominaTableId) {
+        // Obtener todos los registros de nómina y buscar el que coincida
+        // (ya que filterByFormula no funciona bien con campos linked)
+        const nominaUrl = `https://api.airtable.com/v0/${nominaBaseId}/${nominaTableId}`;
+
+        const nominaRes = await fetch(nominaUrl, {
+          headers: {
+            Authorization: `Bearer ${process.env.AIRTABLE_API_TOKEN}`,
+          },
+        });
+
+        if (nominaRes.ok) {
+          const nominaData = await nominaRes.json();
+          // Buscar el registro que tenga el idEmpleadoCore
+          const record = nominaData.records?.find((rec: any) =>
+            rec.fields?.ID_Empleado?.includes(induccion.idEmpleadoCore)
+          );
+          if (record?.fields?.["Fecha Inicio Contrato"]) {
+            fechaIngreso = record.fields["Fecha Inicio Contrato"];
+          }
+        }
+      }
+    } catch (err) {
+      console.error("Error obteniendo fecha de ingreso:", err);
+      // No fallar si no se puede obtener la fecha
+    }
+
+    // 7. Devolver datos necesarios para la firma
     return NextResponse.json({
       success: true,
       data: {
@@ -105,6 +138,7 @@ export async function GET(
         tipo: induccion.tipo,
         fechaRealizacion: induccion.fechaRealizacion,
         responsableSST: induccion.responsableSST,
+        fechaIngreso: fechaIngreso, // Fecha de Nómina
       },
     });
   } catch (error: any) {

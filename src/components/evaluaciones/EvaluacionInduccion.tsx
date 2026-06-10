@@ -64,6 +64,7 @@ export default function EvaluacionInduccion({
   onAprobada,
   onReprobada,
 }: EvaluacionInduccionProps) {
+  const draftKey = `sirius-induccion-eval-draft:${induccionId}:${idEmpleadoCore}`;
   type Screen = "loading" | "tomando" | "resultado" | "error";
   const [screen, setScreen] = useState<Screen>("loading");
   const [errorMsg, setErrorMsg] = useState("");
@@ -80,6 +81,24 @@ export default function EvaluacionInduccion({
   // Timer
   const [secondsLeft, setSecondsLeft] = useState(0);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const saveDraft = (nextAnswers: Map<string, string>, nextIdx: number, nextSecondsLeft: number) => {
+    if (typeof window === "undefined") return;
+
+    const payload = {
+      answers: Array.from(nextAnswers.entries()),
+      currentIdx: nextIdx,
+      secondsLeft: nextSecondsLeft,
+      updatedAt: new Date().toISOString(),
+    };
+
+    localStorage.setItem(draftKey, JSON.stringify(payload));
+  };
+
+  const clearDraft = () => {
+    if (typeof window === "undefined") return;
+    localStorage.removeItem(draftKey);
+  };
 
   // ── Load evaluation ──────────────────────────────────────
   useEffect(() => {
@@ -106,6 +125,33 @@ export default function EvaluacionInduccion({
           setSecondsLeft(json.plantilla.tiempoLimite * 60);
         }
 
+        if (typeof window !== "undefined") {
+          const rawDraft = localStorage.getItem(draftKey);
+          if (rawDraft) {
+            try {
+              const parsed = JSON.parse(rawDraft) as {
+                answers?: Array<[string, string]>;
+                currentIdx?: number;
+                secondsLeft?: number;
+              };
+
+              if (Array.isArray(parsed.answers)) {
+                setAnswers(new Map(parsed.answers));
+              }
+
+              if (typeof parsed.currentIdx === "number" && parsed.currentIdx >= 0 && parsed.currentIdx < json.preguntas.length) {
+                setCurrentIdx(parsed.currentIdx);
+              }
+
+              if (json.plantilla.tiempoLimite > 0 && typeof parsed.secondsLeft === "number" && parsed.secondsLeft > 0) {
+                setSecondsLeft(parsed.secondsLeft);
+              }
+            } catch {
+              // Ignorar draft corrupto y continuar limpio
+            }
+          }
+        }
+
         setScreen("tomando");
       } catch (e) {
         setErrorMsg(e instanceof Error ? e.message : "Error cargando evaluación");
@@ -115,6 +161,11 @@ export default function EvaluacionInduccion({
 
     loadEval();
   }, [induccionId, idEmpleadoCore]);
+
+  useEffect(() => {
+    if (screen !== "tomando") return;
+    saveDraft(answers, currentIdx, secondsLeft);
+  }, [answers, currentIdx, secondsLeft, screen]);
 
   // ── Timer ───────────────────────────────────────────────
   useEffect(() => {
@@ -214,35 +265,25 @@ export default function EvaluacionInduccion({
       setPorcentaje(porc);
       setAprobada(aprobadaResult);
 
-      // Para evaluaciones de inducción, no guardamos en Airtable
-      const esInduccion = induccionId !== undefined;
+      const res = await fetch("/api/inducciones/evaluacion", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          induccionId,
+          idEmpleadoCore,
+          puntajeEvaluacion: porc,
+          estadoEvaluacion: aprobadaResult ? "Aprobada" : "No_Presentada",
+        }),
+      });
 
-      if (!esInduccion) {
-        // Solo guardar si NO es una inducción
-        const res = await fetch("/api/evaluaciones/responder", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            plantillaId: plantilla?.id,
-            idEmpleadoCore,
-            nombres: nombreEmpleado,
-            cedula: numeroDocumento,
-            cargo: cargo,
-            respuestas: Array.from(answersToSubmit.entries()).map(([ppId, respuesta]) => ({
-              ppId,
-              respuesta,
-            })),
-          }),
-        });
+      const data = await res.json();
 
-        const data = await res.json();
-
-        if (!data.success) {
-          throw new Error(data.message || "Error al guardar respuestas");
-        }
+      if (!data.success) {
+        throw new Error(data.message || "Error al guardar resultado de evaluación");
       }
 
       setScreen("resultado");
+      clearDraft();
 
       // Llamar callback según resultado
       if (aprobadaResult) {

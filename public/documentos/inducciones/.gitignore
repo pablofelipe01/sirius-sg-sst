@@ -1,0 +1,4 @@
+# Ignorar PDFs grandes (opcional - descomentar si no quieres subirlos a Git)
+# *.pdf
+
+# Si el PDF debe estar en el repositorio, elimina este archivo
