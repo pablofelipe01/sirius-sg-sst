@@ -208,27 +208,33 @@ export default function EvaluacionInduccion({
       setPorcentaje(porc);
       setAprobada(aprobadaResult);
 
-      // Guardar en Airtable
-      const res = await fetch("/api/evaluaciones/responder", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          plantillaId: plantilla?.id,
-          idEmpleadoCore,
-          nombres: nombreEmpleado,
-          cedula: numeroDocumento,
-          cargo: cargo,
-          respuestas: Array.from(answers.entries()).map(([ppId, respuesta]) => ({
-            ppId,
-            respuesta,
-          })),
-        }),
-      });
+      // Para evaluaciones de inducción, no guardamos en Airtable
+      // El registro se hace al firmar la constancia
+      const esInduccion = induccionId !== undefined;
 
-      const data = await res.json();
+      if (!esInduccion) {
+        // Solo guardar si NO es una inducción (evaluaciones normales)
+        const res = await fetch("/api/evaluaciones/responder", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            plantillaId: plantilla?.id,
+            idEmpleadoCore,
+            nombres: nombreEmpleado,
+            cedula: numeroDocumento,
+            cargo: cargo,
+            respuestas: Array.from(answers.entries()).map(([ppId, respuesta]) => ({
+              ppId,
+              respuesta,
+            })),
+          }),
+        });
 
-      if (!data.success) {
-        throw new Error(data.message || "Error al guardar respuestas");
+        const data = await res.json();
+
+        if (!data.success) {
+          throw new Error(data.message || "Error al guardar respuestas");
+        }
       }
 
       setScreen("resultado");
