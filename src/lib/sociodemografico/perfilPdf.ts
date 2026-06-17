@@ -154,6 +154,7 @@ export async function generarPdfPerfilSociodemografico(
   y = renderDistribucionLaboral(doc, y, M, CW, PH, FH, stats);
   y = renderDistribucionMovilidad(doc, y, M, CW, PH, FH, stats);
   y = renderRegistroIndividual(doc, y, M, CW, PH, FH, respuestas);
+  y = renderFichasIndividuales(doc, y, M, CW, PH, FH, respuestas);
 
   const totalPaginas = doc.getNumberOfPages();
   for (let p = 1; p <= totalPaginas; p++) {
@@ -636,21 +637,376 @@ function renderRegistroIndividual(
     body: datosTabla,
   });
 
-  y = (doc as DocAT).lastAutoTable.finalY + 8;
+  return (doc as DocAT).lastAutoTable.finalY + 8;
+}
 
-  // Detalle por persona (opcional, comentado para no hacer el PDF muy largo)
-  // Si se necesita, descomentar el siguiente bloque
-  /*
-  y = checkPage(doc, y, 30, PH, FH);
-  y = parrafo(doc, "5.1. Información detallada por colaborador", M, y, CW, { fs: 9, style: "bold", color: C.AZUL });
+function renderFichasIndividuales(
+  doc: jsPDF, y: number, M: number, CW: number, PH: number, FH: number,
+  respuestas: Respuesta[]
+): number {
+  y = checkPage(doc, y, 60, PH, FH);
+  y = secTitle(doc, "6. FICHAS INDIVIDUALES DETALLADAS", M, CW, y);
+
+  y = parrafo(doc,
+    "A continuación se presenta la información detallada y completa de cada colaborador evaluado, " +
+    "incluyendo datos demográficos, laborales, de salud, hábitos y movilidad. Esta información es " +
+    "confidencial y de uso exclusivo para el diseño de programas de prevención en el marco del SG-SST.",
+    M, y, CW, { fs: 8.5, style: "italic", color: C.GRIS_TEXTO });
 
   respuestas.forEach((resp, index) => {
-    y = checkPage(doc, y, 50, PH, FH);
-    // Renderizar ficha individual aquí si es necesario
+    // Nueva página para cada colaborador
+    doc.addPage();
+    y = 16;
+
+    // ═══════════════════════════════════════════════════════
+    // ENCABEZADO DE FICHA
+    // ═══════════════════════════════════════════════════════
+    doc.setFillColor(...C.AZUL);
+    doc.rect(M, y, CW, 9, "F");
+    doc.setTextColor(...C.BLANCO);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(11);
+    doc.text(`FICHA ${index + 1} / ${respuestas.length}: ${resp.nombreCompleto.toUpperCase()}`, M + 3, y + 6.2);
+    y += 13;
+
+    // ═══════════════════════════════════════════════════════
+    // SECCIÓN 1: DATOS PERSONALES
+    // ═══════════════════════════════════════════════════════
+    y = renderSubtitulo(doc, "1. DATOS PERSONALES", M, CW, y);
+
+    autoTable(doc, {
+      startY: y,
+      margin: { left: M, right: M, bottom: 28 },
+      tableWidth: CW,
+      theme: "plain",
+      styles: {
+        fontSize: 8.5,
+        cellPadding: { top: 2, bottom: 2, left: 3, right: 3 },
+        lineColor: C.NEGRO, lineWidth: 0.2,
+        textColor: C.NEGRO, overflow: "linebreak",
+      },
+      columnStyles: {
+        0: { fontStyle: "bold", cellWidth: CW * 0.30, fillColor: C.GRIS_CLARO },
+        1: { fontStyle: "normal", cellWidth: CW * 0.70 },
+      },
+      body: [
+        ["Nombre completo:", resp.nombreCompleto],
+        ["Número de documento:", resp.numeroDocumento],
+        ["Fecha de nacimiento:", formatearFecha(resp.fechaNacimiento)],
+        ["Edad:", `${calcularEdad(resp.fechaNacimiento)} años`],
+        ["Género:", etiqueta(resp.genero)],
+        ["Estado civil:", etiqueta(resp.estadoCivil)],
+      ],
+    });
+    y = (doc as DocAT).lastAutoTable.finalY + 6;
+
+    // ═══════════════════════════════════════════════════════
+    // SECCIÓN 2: VIVIENDA Y SITUACIÓN SOCIOECONÓMICA
+    // ═══════════════════════════════════════════════════════
+    y = renderSubtitulo(doc, "2. VIVIENDA Y SITUACIÓN SOCIOECONÓMICA", M, CW, y);
+
+    autoTable(doc, {
+      startY: y,
+      margin: { left: M, right: M, bottom: 28 },
+      tableWidth: CW,
+      theme: "plain",
+      styles: {
+        fontSize: 8.5,
+        cellPadding: { top: 2, bottom: 2, left: 3, right: 3 },
+        lineColor: C.NEGRO, lineWidth: 0.2,
+        textColor: C.NEGRO, overflow: "linebreak",
+      },
+      columnStyles: {
+        0: { fontStyle: "bold", cellWidth: CW * 0.30, fillColor: C.GRIS_CLARO },
+        1: { fontStyle: "normal", cellWidth: CW * 0.70 },
+      },
+      body: [
+        ["Municipio de residencia:", resp.municipioResidencia],
+        ["Estrato socioeconómico:", `Estrato ${resp.estrato}`],
+        ["Tipo de vivienda:", etiqueta(resp.tipoVivienda)],
+        ["Personas a cargo:", etiqueta(resp.personasACargo)],
+      ],
+    });
+    y = (doc as DocAT).lastAutoTable.finalY + 6;
+
+    // ═══════════════════════════════════════════════════════
+    // SECCIÓN 3: EDUCACIÓN Y FORMACIÓN
+    // ═══════════════════════════════════════════════════════
+    y = renderSubtitulo(doc, "3. EDUCACIÓN Y FORMACIÓN", M, CW, y);
+
+    const datosEducacion: Array<[string, string]> = [
+      ["Nivel de escolaridad:", etiqueta(resp.escolaridad)],
+      ["¿Estudia actualmente?:", resp.estudiandoActualmente ? "Sí" : "No"],
+    ];
+
+    if (resp.estudiandoActualmente && resp.carreraActual) {
+      datosEducacion.push(["Programa que cursa:", resp.carreraActual]);
+    }
+
+    autoTable(doc, {
+      startY: y,
+      margin: { left: M, right: M, bottom: 28 },
+      tableWidth: CW,
+      theme: "plain",
+      styles: {
+        fontSize: 8.5,
+        cellPadding: { top: 2, bottom: 2, left: 3, right: 3 },
+        lineColor: C.NEGRO, lineWidth: 0.2,
+        textColor: C.NEGRO, overflow: "linebreak",
+      },
+      columnStyles: {
+        0: { fontStyle: "bold", cellWidth: CW * 0.30, fillColor: C.GRIS_CLARO },
+        1: { fontStyle: "normal", cellWidth: CW * 0.70 },
+      },
+      body: datosEducacion,
+    });
+    y = (doc as DocAT).lastAutoTable.finalY + 6;
+
+    // ═══════════════════════════════════════════════════════
+    // SECCIÓN 4: INFORMACIÓN LABORAL
+    // ═══════════════════════════════════════════════════════
+    y = renderSubtitulo(doc, "4. INFORMACIÓN LABORAL", M, CW, y);
+
+    const datosLaborales: Array<[string, string]> = [
+      ["Área de trabajo:", etiqueta(resp.areaTrabajo)],
+      ["Cargo:", resp.cargo],
+      ["Tipo de contrato:", etiqueta(resp.tipoContrato)],
+      ["Fecha de ingreso a Sirius:", formatearFecha(resp.fechaIngresoSirius)],
+      ["Jornada/turno de trabajo:", etiqueta(resp.turnoTrabajo)],
+      ["¿Tiene otro empleo?:", resp.otroEmpleo ? "Sí" : "No"],
+    ];
+
+    if (resp.otroEmpleo && resp.descripcionOtroEmpleo) {
+      datosLaborales.push(["Descripción del otro empleo:", resp.descripcionOtroEmpleo]);
+    }
+
+    autoTable(doc, {
+      startY: y,
+      margin: { left: M, right: M, bottom: 28 },
+      tableWidth: CW,
+      theme: "plain",
+      styles: {
+        fontSize: 8.5,
+        cellPadding: { top: 2, bottom: 2, left: 3, right: 3 },
+        lineColor: C.NEGRO, lineWidth: 0.2,
+        textColor: C.NEGRO, overflow: "linebreak",
+      },
+      columnStyles: {
+        0: { fontStyle: "bold", cellWidth: CW * 0.30, fillColor: C.GRIS_CLARO },
+        1: { fontStyle: "normal", cellWidth: CW * 0.70 },
+      },
+      body: datosLaborales,
+    });
+    y = (doc as DocAT).lastAutoTable.finalY + 6;
+
+    // ═══════════════════════════════════════════════════════
+    // SECCIÓN 5: CONDICIONES DE SALUD
+    // ═══════════════════════════════════════════════════════
+    y = renderSubtitulo(doc, "5. CONDICIONES DE SALUD", M, CW, y);
+
+    const datosSalud: Array<[string, string]> = [
+      ["¿Enfermedad crónica diagnosticada?:", resp.enfermedadCronica ? "Sí" : "No"],
+    ];
+    if (resp.enfermedadCronica && resp.cualEnfermedadCronica) {
+      datosSalud.push(["Enfermedad(es) crónica(s):", resp.cualEnfermedadCronica]);
+    }
+
+    datosSalud.push(["¿Tiene alguna discapacidad?:", resp.discapacidad ? "Sí" : "No"]);
+    if (resp.discapacidad && resp.cualDiscapacidad) {
+      datosSalud.push(["Tipo de discapacidad:", resp.cualDiscapacidad]);
+    }
+
+    datosSalud.push(["¿Tratamiento médico actual?:", resp.tratamientoMedico ? "Sí" : "No"]);
+    if (resp.tratamientoMedico && resp.descripcionTratamiento) {
+      datosSalud.push(["Descripción del tratamiento:", resp.descripcionTratamiento]);
+    }
+
+    datosSalud.push(["¿Accidentes de trabajo previos?:", resp.accidentesTrabajoPrevios ? "Sí" : "No"]);
+    if (resp.accidentesTrabajoPrevios && resp.descripcionAccidentes) {
+      datosSalud.push(["Descripción de accidentes:", resp.descripcionAccidentes]);
+    }
+
+    datosSalud.push(["¿Enfermedad laboral diagnosticada?:", resp.enfermedadLaboralPrevia ? "Sí" : "No"]);
+    if (resp.enfermedadLaboralPrevia && resp.descripcionEnfLaboral) {
+      datosSalud.push(["Descripción enfermedad laboral:", resp.descripcionEnfLaboral]);
+    }
+
+    autoTable(doc, {
+      startY: y,
+      margin: { left: M, right: M, bottom: 28 },
+      tableWidth: CW,
+      theme: "plain",
+      styles: {
+        fontSize: 8.5,
+        cellPadding: { top: 2, bottom: 2, left: 3, right: 3 },
+        lineColor: C.NEGRO, lineWidth: 0.2,
+        textColor: C.NEGRO, overflow: "linebreak",
+      },
+      columnStyles: {
+        0: { fontStyle: "bold", cellWidth: CW * 0.30, fillColor: C.GRIS_CLARO },
+        1: { fontStyle: "normal", cellWidth: CW * 0.70 },
+      },
+      body: datosSalud,
+    });
+    y = (doc as DocAT).lastAutoTable.finalY + 6;
+
+    // ═══════════════════════════════════════════════════════
+    // SECCIÓN 6: HÁBITOS Y ESTILO DE VIDA
+    // ═══════════════════════════════════════════════════════
+    y = renderSubtitulo(doc, "6. HÁBITOS Y ESTILO DE VIDA", M, CW, y);
+
+    const datosHabitos: Array<[string, string]> = [
+      ["¿Fuma?:", etiqueta(resp.fuma)],
+      ["Consumo de alcohol:", etiqueta(resp.alcohol)],
+      ["¿Practica deporte?:", resp.practicaDeporte ? "Sí" : "No"],
+    ];
+
+    if (resp.practicaDeporte && resp.cualDeporte) {
+      datosHabitos.push(["Deporte(s) que practica:", resp.cualDeporte]);
+    }
+
+    const actividadesTL = resp.tiempoLibre.map(t => etiqueta(t)).join(", ");
+    datosHabitos.push(["Actividades en tiempo libre:", actividadesTL]);
+
+    if (resp.tiempoLibre.includes("Otro") && resp.descripcionOtroTiempoLibre) {
+      datosHabitos.push(["Otra actividad especificada:", resp.descripcionOtroTiempoLibre]);
+    }
+
+    autoTable(doc, {
+      startY: y,
+      margin: { left: M, right: M, bottom: 28 },
+      tableWidth: CW,
+      theme: "plain",
+      styles: {
+        fontSize: 8.5,
+        cellPadding: { top: 2, bottom: 2, left: 3, right: 3 },
+        lineColor: C.NEGRO, lineWidth: 0.2,
+        textColor: C.NEGRO, overflow: "linebreak",
+      },
+      columnStyles: {
+        0: { fontStyle: "bold", cellWidth: CW * 0.30, fillColor: C.GRIS_CLARO },
+        1: { fontStyle: "normal", cellWidth: CW * 0.70 },
+      },
+      body: datosHabitos,
+    });
+    y = (doc as DocAT).lastAutoTable.finalY + 6;
+
+    // ═══════════════════════════════════════════════════════
+    // SECCIÓN 7: TRANSPORTE Y MOVILIDAD
+    // ═══════════════════════════════════════════════════════
+    y = renderSubtitulo(doc, "7. TRANSPORTE Y MOVILIDAD", M, CW, y);
+
+    autoTable(doc, {
+      startY: y,
+      margin: { left: M, right: M, bottom: 28 },
+      tableWidth: CW,
+      theme: "plain",
+      styles: {
+        fontSize: 8.5,
+        cellPadding: { top: 2, bottom: 2, left: 3, right: 3 },
+        lineColor: C.NEGRO, lineWidth: 0.2,
+        textColor: C.NEGRO, overflow: "linebreak",
+      },
+      columnStyles: {
+        0: { fontStyle: "bold", cellWidth: CW * 0.30, fillColor: C.GRIS_CLARO },
+        1: { fontStyle: "normal", cellWidth: CW * 0.70 },
+      },
+      body: [
+        ["Medio de transporte principal:", etiqueta(resp.medioTransporte)],
+        ["Tiempo de desplazamiento (ida):", etiqueta(resp.tiempoDesplazamiento)],
+      ],
+    });
+    y = (doc as DocAT).lastAutoTable.finalY + 6;
+
+    // ═══════════════════════════════════════════════════════
+    // SECCIÓN 8: CONSENTIMIENTO Y DECLARACIONES
+    // ═══════════════════════════════════════════════════════
+    y = renderSubtitulo(doc, "8. CONSENTIMIENTO Y DECLARACIONES", M, CW, y);
+
+    autoTable(doc, {
+      startY: y,
+      margin: { left: M, right: M, bottom: 28 },
+      tableWidth: CW,
+      theme: "plain",
+      styles: {
+        fontSize: 8.5,
+        cellPadding: { top: 2, bottom: 2, left: 3, right: 3 },
+        lineColor: C.NEGRO, lineWidth: 0.2,
+        textColor: C.NEGRO, overflow: "linebreak",
+      },
+      columnStyles: {
+        0: { fontStyle: "bold", cellWidth: CW * 0.50, fillColor: C.GRIS_CLARO },
+        1: { fontStyle: "normal", cellWidth: CW * 0.50, halign: "center" },
+      },
+      body: [
+        ["Acepta política de tratamiento de datos personales (Ley 1581/2012):", resp.aceptaPoliticaDatos ? "✓ Aceptado" : "✗ No aceptado"],
+        ["Declara que la información es veraz y completa:", resp.firmaVeracidad ? "✓ Declarado" : "✗ No declarado"],
+        ["Fecha de respuesta:", resp.createdTime ? formatearFechaHora(resp.createdTime) : "—"],
+      ],
+    });
+    y = (doc as DocAT).lastAutoTable.finalY + 6;
+
+    // Nota de confidencialidad al final de cada ficha
+    y = checkPage(doc, y, 20, PH, FH);
+    doc.setFillColor(...C.GRIS_CLARO);
+    doc.rect(M, y, CW, 14, "F");
+    doc.setTextColor(...C.GRIS_TEXTO);
+    doc.setFont("helvetica", "italic");
+    doc.setFontSize(7.5);
+    const textoConf = doc.splitTextToSize(
+      "CONFIDENCIAL: Esta información es de carácter privado y está protegida por la Ley 1581 de 2012 (Habeas Data). " +
+      "Su uso está restringido exclusivamente para fines del Sistema de Gestión de Seguridad y Salud en el Trabajo (SG-SST) " +
+      "de Sirius Regenerative Solutions S.A.S. Prohibida su divulgación a terceros no autorizados.",
+      CW - 6
+    ) as string[];
+    doc.text(textoConf, M + 3, y + 4);
   });
-  */
 
   return y;
+}
+
+// ══════════════════════════════════════════════════════════
+// HELPERS ADICIONALES
+// ══════════════════════════════════════════════════════════
+
+function renderSubtitulo(doc: jsPDF, titulo: string, x: number, w: number, y: number): number {
+  doc.setFillColor(...C.VERDE);
+  doc.rect(x, y, w, 6.5, "F");
+  doc.setTextColor(...C.BLANCO);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(9);
+  doc.text(titulo, x + 3, y + 4.5);
+  return y + 6.5 + 3;
+}
+
+function formatearFecha(fecha: Date): string {
+  if (!fecha) return "—";
+  try {
+    return new Date(fecha).toLocaleDateString("es-CO", {
+      timeZone: "America/Bogota",
+      year: "numeric",
+      month: "long",
+      day: "2-digit",
+    });
+  } catch {
+    return "—";
+  }
+}
+
+function formatearFechaHora(fecha: Date): string {
+  if (!fecha) return "—";
+  try {
+    return new Date(fecha).toLocaleString("es-CO", {
+      timeZone: "America/Bogota",
+      year: "numeric",
+      month: "long",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  } catch {
+    return "—";
+  }
 }
 
 // ══════════════════════════════════════════════════════════

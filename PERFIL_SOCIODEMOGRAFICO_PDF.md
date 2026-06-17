@@ -100,9 +100,71 @@ Plantación: Barranca de Upía, km 7 vía Cabuyaro, Meta, Colombia
 - **4.2.** Tiempo de desplazamiento
 
 ### Sección 5: Registro Individual de Colaboradores
-- Tabla completa con todos los colaboradores
+- Tabla resumen con todos los colaboradores
 - Columnas: #, Nombre, Edad, Género, Estado Civil, Municipio, Estrato, Escolaridad, Área, Cargo
 - **Confidencialidad**: Conforme Res. 2346 de 2007
+
+### Sección 6: Fichas Individuales Detalladas ⭐ NUEVA
+**Una página completa por cada colaborador con 8 subsecciones:**
+
+#### 6.1. Datos Personales
+- Nombre completo
+- Número de documento
+- Fecha de nacimiento
+- Edad calculada
+- Género
+- Estado civil
+
+#### 6.2. Vivienda y Situación Socioeconómica
+- Municipio de residencia
+- Estrato socioeconómico
+- Tipo de vivienda
+- Personas a cargo
+
+#### 6.3. Educación y Formación
+- Nivel de escolaridad
+- ¿Estudia actualmente?
+- Programa que cursa (si aplica)
+
+#### 6.4. Información Laboral
+- Área de trabajo
+- Cargo
+- Tipo de contrato
+- Fecha de ingreso a Sirius
+- Jornada/turno de trabajo
+- ¿Tiene otro empleo?
+- Descripción del otro empleo (si aplica)
+
+#### 6.5. Condiciones de Salud
+- ¿Enfermedad crónica diagnosticada?
+- Enfermedad(es) crónica(s) (si aplica)
+- ¿Tiene alguna discapacidad?
+- Tipo de discapacidad (si aplica)
+- ¿Tratamiento médico actual?
+- Descripción del tratamiento (si aplica)
+- ¿Accidentes de trabajo previos?
+- Descripción de accidentes (si aplica)
+- ¿Enfermedad laboral diagnosticada?
+- Descripción enfermedad laboral (si aplica)
+
+#### 6.6. Hábitos y Estilo de Vida
+- ¿Fuma?
+- Consumo de alcohol
+- ¿Practica deporte?
+- Deporte(s) que practica (si aplica)
+- Actividades en tiempo libre
+- Otra actividad especificada (si aplica)
+
+#### 6.7. Transporte y Movilidad
+- Medio de transporte principal
+- Tiempo de desplazamiento (ida)
+
+#### 6.8. Consentimiento y Declaraciones
+- Acepta política de tratamiento de datos personales (Ley 1581/2012)
+- Declara que la información es veraz y completa
+- Fecha de respuesta
+
+**Nota de confidencialidad al final de cada ficha**
 
 ## Ventajas del Nuevo Formato
 
@@ -110,21 +172,35 @@ Plantación: Barranca de Upía, km 7 vía Cabuyaro, Meta, Colombia
 - Diseño consistente con otros documentos SST de Sirius
 - Imagen corporativa unificada
 - Presentación formal para auditorías
+- Una página completa por colaborador
+- Organización clara en 8 subsecciones
 
 ### ✅ Normativa
 - Código de formato visible (FT-SST-060)
 - Versión y fecha de edición rastreables
 - Referencias a normativa vigente
+- Cumple Res. 2346/2007 (evaluaciones médicas)
+- Incluye consentimiento Ley 1581/2012
 
 ### ✅ Usabilidad
 - Información organizada por categorías
 - Tablas de distribución con porcentajes
 - Fácil lectura e interpretación
+- **Fichas individuales completas y detalladas**
+- Toda la información en un solo documento
+- No se omite ningún campo capturado
 
 ### ✅ Mantenibilidad
 - Código modular y reutilizable
 - Mismos helpers que actas COPASST
 - Fácil actualización de paleta o formato
+
+### ✅ Completitud ⭐ NUEVO
+- **100% de los datos capturados se muestran**
+- Fichas individuales de página completa
+- Información condicional se muestra solo si aplica
+- Nota de confidencialidad en cada ficha
+- Formato estructurado para análisis individual
 
 ## Implementación Técnica
 
@@ -176,6 +252,11 @@ a.click();
 | Pie de página | Texto simple | Línea verde + datos corporativos |
 | Consistencia | Diseño único | Alineado con actas COPASST/COCOLAB |
 | Estadísticas | Texto plano | Tablas estructuradas con % |
+| **Fichas individuales** | **Texto corrido básico** | **Página completa por persona (8 secciones)** |
+| **Completitud de datos** | **Información parcial** | **100% de los datos capturados** |
+| **Organización individual** | **Sin estructura** | **Tablas estructuradas por categoría** |
+| **Información de salud** | **Párrafo simple** | **Tabla detallada con condiciones** |
+| **Consentimientos** | **No mostrados** | **Sección específica con fechas** |
 
 ## Estadísticas Calculadas
 
