@@ -330,8 +330,10 @@ export class AirtableRespuestaRepository implements IRespuestaRepository {
       medioTransporte: record.get(F.MEDIO_TRANSPORTE) as any,
       tiempoDesplazamiento: record.get(F.TIEMPO_DESPLAZAMIENTO) as any,
       // Consentimiento
-      aceptaPoliticaDatos: record.get(F.ACEPTA_POLITICA_DATOS) === true,
-      firmaVeracidad: record.get(F.FIRMA_VERACIDAD) === true,
+      aceptaPoliticaDatos: Boolean(record.get(F.ACEPTA_POLITICA_DATOS)),
+      firmaVeracidad: Boolean(record.get(F.FIRMA_VERACIDAD)),
+      // Firma digital
+      firma: record.get(F.FIRMA) as string | undefined,
       createdTime: new Date(record._rawJson.createdTime),
     };
   }
