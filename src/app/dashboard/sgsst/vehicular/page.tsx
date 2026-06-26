@@ -87,8 +87,29 @@ export default function SeguimientoVehicularPage() {
   const cargarVehiculos = async () => {
     try {
       setLoading(true);
+
+      // Primero verificar estado de configuración
+      const diagnosticoResponse = await fetch("/api/sgsst/vehicular/diagnostico");
+      if (diagnosticoResponse.ok) {
+        const diagnostico = await diagnosticoResponse.json();
+        if (diagnostico.estado.includes("Sin configurar")) {
+          // Módulo sin configurar, mostrar mensaje amigable
+          setVehiculos([]);
+          setLoading(false);
+          return;
+        }
+      }
+
       const response = await fetch("/api/sgsst/vehicular");
-      if (!response.ok) throw new Error("Error al cargar vehículos");
+      if (!response.ok) {
+        // Si es 403, probablemente es problema de configuración
+        if (response.status === 403) {
+          setVehiculos([]);
+          setLoading(false);
+          return;
+        }
+        throw new Error("Error al cargar vehículos");
+      }
 
       const data = await response.json();
       setVehiculos(data.vehiculos || []);
@@ -359,6 +380,67 @@ export default function SeguimientoVehicularPage() {
           <div className="flex flex-col items-center justify-center py-20">
             <Loader2 className="w-12 h-12 text-indigo-400 animate-spin mb-4" />
             <p className="text-white/60">Cargando vehículos...</p>
+          </div>
+        ) : vehiculos.length === 0 && filteredVehiculos.length === 0 ? (
+          <div className="bg-white/10 backdrop-blur-xl rounded-xl border border-white/15 p-10">
+            <div className="max-w-2xl mx-auto text-center">
+              <div className="w-20 h-20 rounded-full bg-amber-500/20 flex items-center justify-center mx-auto mb-6">
+                <AlertCircle className="w-10 h-10 text-amber-300" />
+              </div>
+              <h2 className="text-2xl font-bold text-white mb-3">Configuración Inicial Requerida</h2>
+              <p className="text-white/70 text-lg mb-6">
+                El módulo de seguimiento vehicular está implementado y funcional, pero requiere configuración de Airtable.
+              </p>
+
+              <div className="bg-white/5 rounded-lg border border-white/10 p-6 mb-6 text-left">
+                <h3 className="text-white font-semibold mb-3 flex items-center gap-2">
+                  <span className="text-2xl">📋</span>
+                  Pasos para activar el módulo:
+                </h3>
+                <ol className="space-y-2 text-white/60">
+                  <li className="flex gap-3">
+                    <span className="font-bold text-amber-300">1.</span>
+                    <span>Crear 4 tablas en Airtable: <code className="text-amber-300">veh_vehiculos</code>, <code className="text-amber-300">veh_documentos</code>, <code className="text-amber-300">veh_licencias</code>, <code className="text-amber-300">veh_alertas_log</code></span>
+                  </li>
+                  <li className="flex gap-3">
+                    <span className="font-bold text-amber-300">2.</span>
+                    <span>Copiar los Field IDs de cada campo</span>
+                  </li>
+                  <li className="flex gap-3">
+                    <span className="font-bold text-amber-300">3.</span>
+                    <span>Agregar las 53 variables de entorno a <code className="text-amber-300">.env.local</code></span>
+                  </li>
+                  <li className="flex gap-3">
+                    <span className="font-bold text-amber-300">4.</span>
+                    <span>Reiniciar el servidor con <code className="text-amber-300">npm run dev</code></span>
+                  </li>
+                </ol>
+              </div>
+
+              <div className="flex flex-col sm:flex-row gap-3 justify-center">
+                <a
+                  href="http://localhost:3001/api/sgsst/vehicular/diagnostico"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center justify-center gap-2 px-6 py-3 bg-indigo-500 hover:bg-indigo-600 text-white rounded-lg font-medium transition-colors"
+                >
+                  <Circle className="w-5 h-5" />
+                  Ver Estado de Configuración
+                </a>
+                <button
+                  onClick={() => window.open('https://airtable.com/appBU8J9xGIFJSOVc', '_blank')}
+                  className="inline-flex items-center justify-center gap-2 px-6 py-3 bg-white/10 hover:bg-white/20 text-white rounded-lg font-medium transition-colors border border-white/20"
+                >
+                  Abrir Airtable
+                </button>
+              </div>
+
+              <div className="mt-8 p-4 bg-blue-500/10 rounded-lg border border-blue-400/30">
+                <p className="text-sm text-blue-200">
+                  <strong>📖 Guía completa:</strong> Revisa el archivo <code className="bg-blue-500/20 px-2 py-1 rounded">GUIA_RAPIDA_VEHICULAR.md</code> en la raíz del proyecto para instrucciones detalladas (setup en 30 minutos).
+                </p>
+              </div>
+            </div>
           </div>
         ) : filteredVehiculos.length === 0 ? (
           <div className="bg-white/10 backdrop-blur-xl rounded-xl border border-white/15 p-10 text-center">
