@@ -474,12 +474,14 @@ export class AirtableInduccionesRepository {
 
   private async obtenerUltimoIdInduccion(): Promise<string | null> {
     const url = `${this.client.baseUrl}/${this.registrosTableId}`;
-    const params = new URLSearchParams({
-      sort: JSON.stringify([{field: RF.ID_INDUCCION, direction: 'desc'}]), // Usar Field ID
-      maxRecords: "1",
-    });
 
     console.log('[obtenerUltimoIdInduccion] Consultando último ID...');
+
+    // Estrategia: obtener todos los IDs y ordenar en JS (más confiable)
+    const params = new URLSearchParams({
+      fields: JSON.stringify(['ID_Induccion']), // Solo traer el campo que necesitamos
+      pageSize: "100", // Traer últimos 100 registros
+    });
 
     const response = await fetch(`${url}?${params}`, {
       headers: this.client.headers,
@@ -491,43 +493,113 @@ export class AirtableInduccionesRepository {
     }
 
     const data = await response.json();
-    const lastId = data.records.length > 0 ? data.records[0].fields[RF.ID_INDUCCION] : null;
 
+    if (data.records.length === 0) {
+      console.log('[obtenerUltimoIdInduccion] No hay registros, iniciando en IND-0001');
+      return null;
+    }
+
+    // Ordenar en JS por número extraído (más confiable que sort de Airtable)
+    const ids = data.records
+      .map((r: any) => r.fields['ID_Induccion'])
+      .filter(Boolean)
+      .map((id: string) => ({
+        original: id,
+        numero: parseInt(id.split('-')[1] || '0', 10)
+      }))
+      .sort((a, b) => b.numero - a.numero); // DESC
+
+    const lastId = ids.length > 0 ? ids[0].original : null;
     console.log(`[obtenerUltimoIdInduccion] Último ID encontrado: ${lastId || 'NINGUNO (primera inducción)'}`);
+    console.log(`[obtenerUltimoIdInduccion] Total de registros analizados: ${data.records.length}`);
 
     return lastId;
   }
 
   private async obtenerUltimoIdToken(): Promise<string | null> {
     const url = `${this.client.baseUrl}/${this.tokensTableId}`;
+
+    console.log('[obtenerUltimoIdToken] Consultando último Token_ID...');
+
+    // Estrategia: obtener todos los IDs y ordenar en JS (más confiable)
     const params = new URLSearchParams({
-      sort: JSON.stringify([{field: 'Token_ID', direction: 'desc'}]),
-      maxRecords: "1",
+      fields: JSON.stringify(['Token_ID']),
+      pageSize: "100",
     });
 
     const response = await fetch(`${url}?${params}`, {
       headers: this.client.headers,
     });
 
-    if (!response.ok) return null;
+    if (!response.ok) {
+      console.error('[obtenerUltimoIdToken] Error en la consulta:', await response.text());
+      return null;
+    }
+
     const data = await response.json();
-    return data.records.length > 0 ? (data.records[0].fields["Token_ID"] || data.records[0].fields[TF.TOKEN_ID]) : null;
+
+    if (data.records.length === 0) {
+      console.log('[obtenerUltimoIdToken] No hay registros, iniciando en TKNI-0001');
+      return null;
+    }
+
+    // Ordenar en JS por número extraído
+    const ids = data.records
+      .map((r: any) => r.fields['Token_ID'])
+      .filter(Boolean)
+      .map((id: string) => ({
+        original: id,
+        numero: parseInt(id.split('-')[1] || '0', 10)
+      }))
+      .sort((a, b) => b.numero - a.numero); // DESC
+
+    const lastId = ids.length > 0 ? ids[0].original : null;
+    console.log(`[obtenerUltimoIdToken] Último Token_ID encontrado: ${lastId || 'NINGUNO'}`);
+
+    return lastId;
   }
 
   private async obtenerUltimoIdAlerta(): Promise<string | null> {
     const url = `${this.client.baseUrl}/${this.alertasTableId}`;
+
+    console.log('[obtenerUltimoIdAlerta] Consultando último ID_Alerta...');
+
+    // Estrategia: obtener todos los IDs y ordenar en JS (más confiable)
     const params = new URLSearchParams({
-      sort: JSON.stringify([{field: 'ID_Alerta', direction: 'desc'}]),
-      maxRecords: "1",
+      fields: JSON.stringify(['ID_Alerta']),
+      pageSize: "100",
     });
 
     const response = await fetch(`${url}?${params}`, {
       headers: this.client.headers,
     });
 
-    if (!response.ok) return null;
+    if (!response.ok) {
+      console.error('[obtenerUltimoIdAlerta] Error en la consulta:', await response.text());
+      return null;
+    }
+
     const data = await response.json();
-    return data.records.length > 0 ? (data.records[0].fields["ID_Alerta"] || data.records[0].fields[AF.ID_ALERTA]) : null;
+
+    if (data.records.length === 0) {
+      console.log('[obtenerUltimoIdAlerta] No hay registros, iniciando en ALR-IND-0001');
+      return null;
+    }
+
+    // Ordenar en JS por número extraído
+    const ids = data.records
+      .map((r: any) => r.fields['ID_Alerta'])
+      .filter(Boolean)
+      .map((id: string) => ({
+        original: id,
+        numero: parseInt(id.split('-').pop() || '0', 10) // Último segmento después del guion
+      }))
+      .sort((a, b) => b.numero - a.numero); // DESC
+
+    const lastId = ids.length > 0 ? ids[0].original : null;
+    console.log(`[obtenerUltimoIdAlerta] Último ID_Alerta encontrado: ${lastId || 'NINGUNO'}`);
+
+    return lastId;
   }
 
   // ── MAPPERS ────────────────────────────────────────────────

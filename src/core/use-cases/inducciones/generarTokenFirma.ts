@@ -33,9 +33,34 @@ export async function generarTokenFirma(
   // Generar el token
   const token = await induccionesRepository.crearTokenFirma(idInduccion, idEmpleadoCore);
 
+  // Validar que hashFirma exista
+  if (!token.hashFirma) {
+    console.error('[generarTokenFirma] ERROR - hashFirma es null o undefined');
+    throw new Error('Error generando hash de firma - token inválido');
+  }
+
+  // Validar variable de entorno
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL;
+  if (!baseUrl) {
+    console.error('[generarTokenFirma] ERROR - NEXT_PUBLIC_APP_URL no está definida');
+    console.error('[generarTokenFirma] Usando fallback: http://localhost:3000');
+    // En desarrollo, usar localhost; en producción esto debe estar configurado
+    const fallbackUrl = process.env.NODE_ENV === 'development'
+      ? 'http://localhost:3000'
+      : 'https://sirius-sg-sst.vercel.app';
+
+    const urlFirma = `${fallbackUrl}/inducciones/firma/${token.hashFirma}`;
+    console.warn(`[generarTokenFirma] URL generada con fallback: ${urlFirma}`);
+
+    return {
+      ...token,
+      urlFirma,
+    } as any;
+  }
+
   // Construir URL de firma
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
   const urlFirma = `${baseUrl}/inducciones/firma/${token.hashFirma}`;
+  console.log(`[generarTokenFirma] URL generada correctamente: ${urlFirma}`);
 
   return {
     ...token,
