@@ -253,6 +253,10 @@ export default function NuevoRegistroPage() {
   // Filtro de categoría
   const [categoriaFilter, setCategoriaFilter] = useState<string>("");
 
+  // Opción "Otra" para capacitaciones no programadas
+  const [isOtraCapacitacion, setIsOtraCapacitacion] = useState(false);
+  const [otraCapacitacionNombre, setOtraCapacitacionNombre] = useState("");
+
   // Grabador de voz (Temas Tratados)
   const [isRecording, setIsRecording] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
@@ -492,8 +496,13 @@ export default function NuevoRegistroPage() {
 
   // Paso 1 → Paso 2: Crear registros de asistencia en Airtable
   const crearRegistro = async () => {
-    if (selectedProgs.length === 0) {
-      setErrorMessage("Selecciona al menos una actividad programada");
+    if (!isOtraCapacitacion && selectedProgs.length === 0) {
+      setErrorMessage("Selecciona al menos una actividad programada o elige 'Otra'");
+      return;
+    }
+
+    if (isOtraCapacitacion && !otraCapacitacionNombre.trim()) {
+      setErrorMessage("Por favor ingresa el nombre de la capacitación");
       return;
     }
 
@@ -515,8 +524,10 @@ export default function NuevoRegistroPage() {
       }));
 
       const payload = {
-        capacitacionCodigo: selectedProgs[0].capacitacionCodigo || selectedProgs[0].identificador,
-        programacionRecordIds: selectedProgs.map((p) => p.id),
+        capacitacionCodigo: isOtraCapacitacion
+          ? "OTRA-CAP"
+          : (selectedProgs[0].capacitacionCodigo || selectedProgs[0].identificador),
+        programacionRecordIds: isOtraCapacitacion ? [] : selectedProgs.map((p) => p.id),
         eventoData: {
           ciudad,
           lugar,
@@ -526,6 +537,7 @@ export default function NuevoRegistroPage() {
           temasTratados,
           nombreConferencista,
           tipoEvento,
+          nombreEvento: isOtraCapacitacion ? otraCapacitacionNombre : nombreEvento,
         },
         asistentes: asistentesPayload,
         fechaRegistro: fecha,
@@ -881,16 +893,18 @@ export default function NuevoRegistroPage() {
                   type="button"
                   onClick={() => setShowCapDropdown((v) => !v)}
                   className={`w-full px-4 py-2.5 rounded-lg border text-left flex items-center justify-between gap-2 transition-all focus:outline-none focus:ring-2 focus:ring-purple-400/50 ${
-                    selectedProgs.length > 0
-                      ? "bg-purple-500/20 border-purple-400/40 text-white"
+                    selectedProgs.length > 0 || isOtraCapacitacion
+                      ? (isOtraCapacitacion ? "bg-blue-500/20 border-blue-400/40" : "bg-purple-500/20 border-purple-400/40") + " text-white"
                       : "bg-white/10 border-white/20 text-white/40"
                   }`}
                 >
                   <span className="flex items-center gap-2 truncate">
-                    <BookOpen className="w-4 h-4 shrink-0 text-purple-300" />
-                    {selectedProgs.length > 0
-                      ? `${selectedProgs.length} actividad${selectedProgs.length > 1 ? "es" : ""} seleccionada${selectedProgs.length > 1 ? "s" : ""}`
-                      : "Seleccionar actividad(es)..."}
+                    <BookOpen className={`w-4 h-4 shrink-0 ${isOtraCapacitacion ? "text-blue-300" : "text-purple-300"}`} />
+                    {isOtraCapacitacion
+                      ? "Otra (Capacitación no programada)"
+                      : selectedProgs.length > 0
+                        ? `${selectedProgs.length} actividad${selectedProgs.length > 1 ? "es" : ""} seleccionada${selectedProgs.length > 1 ? "s" : ""}`
+                        : "Seleccionar actividad(es)..."}
                   </span>
                   {loadingCaps ? (
                     <Loader2 className="w-4 h-4 animate-spin text-white/40 shrink-0" />
@@ -899,8 +913,26 @@ export default function NuevoRegistroPage() {
                   )}
                 </button>
                 {/* Chips de actividades seleccionadas */}
-                {selectedProgs.length > 0 && (
+                {(selectedProgs.length > 0 || isOtraCapacitacion) && (
                   <div className="mt-2 flex flex-wrap gap-1.5">
+                    {isOtraCapacitacion && (
+                      <span className="flex items-center gap-1.5 pl-2.5 pr-1.5 py-1 rounded-full bg-blue-500/20 border border-blue-400/30 text-xs">
+                        <span className="font-mono text-blue-300">OTRA</span>
+                        <span className="text-white/50">·</span>
+                        <span className="text-white/80 truncate max-w-[180px]">Capacitación no programada</span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsOtraCapacitacion(false);
+                            setOtraCapacitacionNombre("");
+                            setNombreEvento("");
+                          }}
+                          className="p-0.5 rounded-full hover:bg-blue-500/30 transition-colors"
+                        >
+                          <X className="w-3 h-3 text-white/60" />
+                        </button>
+                      </span>
+                    )}
                     {selectedProgs.map((p) => (
                       <span key={p.id} className="flex items-center gap-1.5 pl-2.5 pr-1.5 py-1 rounded-full bg-purple-500/20 border border-purple-400/30 text-xs">
                         <span className="font-mono text-purple-300">{p.identificador}</span>
@@ -1005,10 +1037,63 @@ export default function NuevoRegistroPage() {
                           </button>
                         ));
                       })()}
+
+                      {/* Opción "Otra" */}
+                      <div className="border-t border-white/10 mt-2 pt-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsOtraCapacitacion(!isOtraCapacitacion);
+                            if (!isOtraCapacitacion) {
+                              setSelectedProgs([]);
+                              setShowCapDropdown(false);
+                            }
+                          }}
+                          className={`w-full text-left px-4 py-2.5 text-sm hover:bg-blue-500/20 transition-colors flex items-start gap-2 ${
+                            isOtraCapacitacion
+                              ? "bg-blue-500/25 text-blue-200"
+                              : "text-white/80"
+                          }`}
+                        >
+                          <div className={`w-4 h-4 mt-0.5 shrink-0 rounded border flex items-center justify-center transition-colors ${
+                            isOtraCapacitacion ? "bg-blue-500 border-blue-400" : "border-white/30"
+                          }`}>
+                            {isOtraCapacitacion && <Check className="w-3 h-3 text-white" />}
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <span className="block text-sm font-medium">Otra (Capacitación no programada)</span>
+                            <span className="block text-xs text-white/50 mt-0.5">
+                              Para registrar capacitaciones que no están en el cronograma anual
+                            </span>
+                          </div>
+                        </button>
+                      </div>
                     </div>
                   </div>
                 )}
               </div>
+
+              {/* Campo de texto para "Otra capacitación" */}
+              {isOtraCapacitacion && (
+                <div className="mt-3 p-4 rounded-lg bg-blue-500/10 border border-blue-400/30">
+                  <label className="block text-sm font-medium text-blue-300 mb-2">
+                    Nombre de la capacitación <span className="text-red-400">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={otraCapacitacionNombre}
+                    onChange={(e) => {
+                      setOtraCapacitacionNombre(e.target.value);
+                      setNombreEvento(e.target.value);
+                    }}
+                    placeholder="Ej: Primeros Auxilios Avanzados"
+                    className="w-full px-4 py-2.5 rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-blue-400/50"
+                  />
+                  <p className="text-xs text-white/50 mt-2">
+                    Esta capacitación no está vinculada al cronograma anual de programación
+                  </p>
+                </div>
+              )}
             </div>
 
             {/* Tipo de Evento */}
