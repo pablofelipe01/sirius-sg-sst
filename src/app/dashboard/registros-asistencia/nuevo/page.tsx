@@ -257,6 +257,9 @@ export default function NuevoRegistroPage() {
   const [isOtraCapacitacion, setIsOtraCapacitacion] = useState(false);
   const [otraCapacitacionNombre, setOtraCapacitacionNombre] = useState("");
 
+  // Control manual de evaluación
+  const [tieneEvaluacion, setTieneEvaluacion] = useState(true);
+
   // Grabador de voz (Temas Tratados)
   const [isRecording, setIsRecording] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
@@ -621,7 +624,14 @@ export default function NuevoRegistroPage() {
 
   // ── Verificar estado de evaluación para todos los asistentes ──
   const fetchEvalStatus = useCallback(async () => {
-    if (asistentes.length === 0 || selectedProgs.length === 0) return;
+    // Si el usuario indicó que NO tiene evaluación, saltear verificación
+    if (!tieneEvaluacion) {
+      setHasEvaluaciones(false);
+      setEvalStatus({});
+      return;
+    }
+
+    if (asistentes.length === 0 || (selectedProgs.length === 0 && !isOtraCapacitacion)) return;
     setLoadingEvalStatus(true);
     try {
       const idEmpleadoCores = asistentes
@@ -641,7 +651,7 @@ export default function NuevoRegistroPage() {
       }
     } catch { /* silencioso */ }
     finally { setLoadingEvalStatus(false); }
-  }, [asistentes, selectedProgs]);
+  }, [asistentes, selectedProgs, tieneEvaluacion, isOtraCapacitacion]);
 
   // Verificar eval status cuando entramos a paso 2 y periódicamente
   useEffect(() => {
@@ -1096,7 +1106,7 @@ export default function NuevoRegistroPage() {
               )}
             </div>
 
-            {/* Tipo de Evento */}
+            {/* Tipo de Evento y Checkbox de Evaluación */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-white/70 mb-1">Tipo de Evento</label>
@@ -1110,6 +1120,30 @@ export default function NuevoRegistroPage() {
                   <option value="Charla" className="bg-slate-900">Charla</option>
                   <option value="Capacitaciones/Charlas" className="bg-slate-900">Capacitaciones/Charlas</option>
                 </select>
+              </div>
+
+              <div className="flex items-end pb-1">
+                <label className="flex items-center gap-3 cursor-pointer group">
+                  <div className="relative">
+                    <input
+                      type="checkbox"
+                      checked={tieneEvaluacion}
+                      onChange={(e) => setTieneEvaluacion(e.target.checked)}
+                      className="sr-only peer"
+                    />
+                    <div className="w-5 h-5 rounded border-2 border-white/30 peer-checked:bg-purple-500 peer-checked:border-purple-400 flex items-center justify-center transition-all group-hover:border-white/50">
+                      {tieneEvaluacion && <Check className="w-3.5 h-3.5 text-white" />}
+                    </div>
+                  </div>
+                  <div className="flex flex-col">
+                    <span className="text-sm font-medium text-white/80 group-hover:text-white transition-colors">
+                      Tiene evaluación
+                    </span>
+                    <span className="text-xs text-white/50">
+                      Desmarca si es charla o socialización sin evaluación
+                    </span>
+                  </div>
+                </label>
               </div>
             </div>
 

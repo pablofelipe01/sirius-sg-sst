@@ -144,6 +144,8 @@ interface EventoInfo {
   lugar: string;
   ciudad: string;
   conferencista: string;
+  tipo?: string;
+  temasTratados?: string;
 }
 
 interface PageData {
@@ -378,6 +380,8 @@ function EvaluarContent() {
               cedula={data.cedula}
               cargo={data.cargo}
               progCapId={data.progIds?.[0]}
+              tipo={data.evento.tipo}
+              temasTratados={data.evento.temasTratados}
               onFinished={() => setEvalDone(true)}
               allowSkip={false}
             />

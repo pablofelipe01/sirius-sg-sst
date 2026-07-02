@@ -19,8 +19,26 @@ import { airtableSGSSTConfig, getSGSSTUrl, getSGSSTHeaders } from "@/infrastruct
 export async function GET(request: NextRequest) {
   const idEmpleadoCore = request.nextUrl.searchParams.get("idEmpleadoCore");
   const progCapId = request.nextUrl.searchParams.get("progCapId") || null;
+  const tipo = request.nextUrl.searchParams.get("tipo") || null;
+  const temasTratados = request.nextUrl.searchParams.get("temasTratados") || null;
+
   if (!idEmpleadoCore) {
     return NextResponse.json({ success: false, message: "idEmpleadoCore requerido" }, { status: 400 });
+  }
+
+  console.log('[pendientes] Request params:', { idEmpleadoCore, progCapId, tipo, temasTratados });
+
+  // ── REGLA ESPECIAL: Charlas de socialización NO tienen evaluación ──
+  if (tipo === "Charla" || tipo === "Socialización" ||
+      (temasTratados && (
+        temasTratados.toLowerCase().includes("socialización") ||
+        temasTratados.toLowerCase().includes("socializacion")
+      ))) {
+    console.log('[pendientes] Evento es Charla/Socialización - sin evaluación por regla');
+    return NextResponse.json(
+      { success: true, pendientes: [] },
+      { headers: { "Cache-Control": "no-store, no-cache, must-revalidate", "Pragma": "no-cache" } }
+    );
   }
 
   // ── 0. Excluir empleados marcados con checkbox (Miembros Comité SST) ────

@@ -107,6 +107,8 @@ export async function GET(request: NextRequest) {
         lugar: ef[evtF.LUGAR] as string,
         ciudad: ef[evtF.CIUDAD] as string,
         conferencista: ef[evtF.NOMBRE_CONFERENCISTA] as string,
+        tipo: ef[evtF.TIPO] as string,
+        temasTratados: ef[evtF.TEMAS_TRATADOS] as string,
       },
     },
   });

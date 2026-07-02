@@ -71,6 +71,8 @@ interface EvaluacionFlowProps {
   cedula: string;
   cargo?: string;
   progCapId?: string;
+  tipo?: string;             // tipo de evento
+  temasTratados?: string;    // temas tratados
   onFinished?: () => void;   // called when user dismisses the evaluation flow
   allowSkip?: boolean;       // when false, hide skip/close buttons & auto-advance on approval (default true)
 }
@@ -85,6 +87,8 @@ export default function EvaluacionFlow({
   cedula,
   cargo = "",
   progCapId,
+  tipo,
+  temasTratados,
   onFinished,
   allowSkip = true,
 }: EvaluacionFlowProps) {
@@ -111,6 +115,8 @@ export default function EvaluacionFlow({
     try {
       const params = new URLSearchParams({ idEmpleadoCore });
       if (progCapId) params.set("progCapId", progCapId);
+      if (tipo) params.set("tipo", tipo);
+      if (temasTratados) params.set("temasTratados", temasTratados);
       params.set("_t", Date.now().toString());
       const res = await fetch(`/api/evaluaciones/pendientes?${params.toString()}`, { cache: "no-store" });
       const json = await res.json();
@@ -125,7 +131,7 @@ export default function EvaluacionFlow({
       setErrorMsg(e instanceof Error ? e.message : "Error cargando evaluaciones");
       setScreen("error");
     }
-  }, [idEmpleadoCore, progCapId]);
+  }, [idEmpleadoCore, progCapId, tipo, temasTratados]);
 
   useEffect(() => { loadPendientes(); }, [loadPendientes]);
 
@@ -134,6 +140,8 @@ export default function EvaluacionFlow({
     try {
       const params = new URLSearchParams({ idEmpleadoCore });
       if (progCapId) params.set("progCapId", progCapId);
+      if (tipo) params.set("tipo", tipo);
+      if (temasTratados) params.set("temasTratados", temasTratados);
       params.set("_t", Date.now().toString());
       const res = await fetch(`/api/evaluaciones/pendientes?${params.toString()}`, { cache: "no-store" });
       const json = await res.json();

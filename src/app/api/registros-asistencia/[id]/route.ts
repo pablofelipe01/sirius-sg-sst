@@ -83,6 +83,9 @@ export async function GET(
     const temas = (f[evtF.TEMAS_TRATADOS] as string) || "";
     const primerTema = temas.split("\n")[0].replace(/^[-•]\s*/, "").trim();
 
+    // Obtener IDs de programaciones vinculadas (si existen)
+    const progCapIds = (f[evtF.PROGRAMACION_LINK] as string[]) || [];
+
     return NextResponse.json({
       success: true,
       data: {
@@ -100,6 +103,7 @@ export async function GET(
         nombreConferencista: f[evtF.NOMBRE_CONFERENCISTA] as string,
         estado:              f[evtF.ESTADO] as string,
         tieneFirmaConferencista: !!(f[evtF.FIRMA_CONFERENCISTA]),
+        progCapIds,          // IDs de programaciones vinculadas
         asistentes,
       },
     });

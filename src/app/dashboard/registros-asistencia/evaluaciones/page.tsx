@@ -45,6 +45,9 @@ interface RegistroDetalle {
   fecha: string;
   ciudad: string;
   lugar: string;
+  tipo?: string; // Tipo de evento
+  temasTratados?: string; // Temas tratados
+  progCapIds?: string[]; // IDs de programaciones vinculadas
   asistentes: AsistenteDetalle[];
 }
 
@@ -71,6 +74,10 @@ export default function EvaluacionesPage() {
   const [generatingLinks, setGeneratingLinks] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
+  // ── Verificar si el evento tiene evaluaciones ─────────────
+  const [hasEvaluaciones, setHasEvaluaciones] = useState(false);
+  const [checkingEval, setCheckingEval] = useState(false);
+
   // ── Fetch registros ───────────────────────────────────────
   const fetchRegistros = useCallback(async () => {
     setLoading(true);
@@ -94,15 +101,61 @@ export default function EvaluacionesPage() {
     setLoadingDetalle(true);
     setDetalle(null);
     setEvalLinks([]);
+    setHasEvaluaciones(false);
     try {
       const res = await fetch(`/api/registros-asistencia/${id}`);
       const json = await res.json();
-      if (json.success) setDetalle(json.data as RegistroDetalle);
+      if (json.success) {
+        const registroDetalle = json.data as RegistroDetalle;
+        setDetalle(registroDetalle);
+
+        // Verificar si este evento tiene evaluaciones
+        checkIfHasEvaluaciones(registroDetalle);
+      }
       else setError(json.message || "Error cargando detalle");
     } catch {
       setError("Error de conexión");
     } finally {
       setLoadingDetalle(false);
+    }
+  }, []);
+
+  // ── Verificar si el evento tiene evaluaciones asociadas ───
+  const checkIfHasEvaluaciones = useCallback(async (detalle: RegistroDetalle) => {
+    if (!detalle.asistentes || detalle.asistentes.length === 0) {
+      setHasEvaluaciones(false);
+      return;
+    }
+
+    setCheckingEval(true);
+    try {
+      const idEmpleadoCores = detalle.asistentes
+        .map((a) => a.cedula) // Usando cedula como proxy, ajustar si tienes idEmpleado
+        .filter(Boolean);
+
+      const progCapIds = detalle.progCapIds || [];
+
+      const res = await fetch("/api/evaluaciones/check-batch", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          idEmpleadoCores,
+          progCapIds,
+          tipo: detalle.tipo,
+          temasTratados: detalle.temasTratados
+        }),
+        cache: "no-store",
+      });
+
+      const json = await res.json();
+      if (json.success) {
+        setHasEvaluaciones(json.hasEvaluaciones ?? false);
+      }
+    } catch (err) {
+      console.error("Error verificando evaluaciones:", err);
+      setHasEvaluaciones(false);
+    } finally {
+      setCheckingEval(false);
     }
   }, []);
 
@@ -320,19 +373,34 @@ export default function EvaluacionesPage() {
                   </div>
                 </div>
 
-                {/* Botón generar enlaces */}
-                {evalLinks.length === 0 && (
+                {/* Botón generar enlaces - Solo si tiene evaluaciones */}
+                {hasEvaluaciones && evalLinks.length === 0 && (
                   <button
                     onClick={generateEvalLinks}
-                    disabled={generatingLinks || detalle.asistentes.length === 0}
+                    disabled={generatingLinks || detalle.asistentes.length === 0 || checkingEval}
                     className="w-full flex items-center justify-center gap-3 py-4 rounded-2xl bg-violet-600 hover:bg-violet-500 text-white font-semibold transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-violet-900/30"
                   >
                     {generatingLinks ? (
                       <><Loader2 className="w-5 h-5 animate-spin" /> Generando enlaces…</>
+                    ) : checkingEval ? (
+                      <><Loader2 className="w-5 h-5 animate-spin" /> Verificando…</>
                     ) : (
                       <><Link className="w-5 h-5" /> Generar enlaces de evaluación</>
                     )}
                   </button>
+                )}
+
+                {/* Mensaje informativo si NO tiene evaluaciones */}
+                {!hasEvaluaciones && !checkingEval && evalLinks.length === 0 && (
+                  <div className="w-full py-4 px-5 rounded-2xl bg-blue-500/10 border border-blue-400/30 text-center">
+                    <div className="flex items-center justify-center gap-2 text-blue-300 mb-1">
+                      <ClipboardList className="w-5 h-5" />
+                      <span className="font-semibold">Este evento no requiere evaluación</span>
+                    </div>
+                    <p className="text-sm text-white/60">
+                      Los participantes pueden firmar directamente sin completar una evaluación previa
+                    </p>
+                  </div>
                 )}
 
                 {/* Lista de enlaces */}

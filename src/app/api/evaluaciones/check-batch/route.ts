@@ -22,14 +22,32 @@ import { airtableSGSSTConfig, getSGSSTUrl, getSGSSTHeaders } from "@/infrastruct
  *   }
  */
 export async function POST(request: NextRequest) {
-  let body: { idEmpleadoCores: string[]; progCapIds: string[] };
+  let body: { idEmpleadoCores: string[]; progCapIds: string[]; tipo?: string; temasTratados?: string };
   try {
     body = await request.json();
   } catch {
     return NextResponse.json({ success: false, message: "Body inválido" }, { status: 400 });
   }
 
-  const { idEmpleadoCores, progCapIds } = body;
+  const { idEmpleadoCores, progCapIds, tipo, temasTratados } = body;
+
+  console.log('[check-batch] Request body:', JSON.stringify({ idEmpleadoCores, progCapIds, tipo }, null, 2));
+
+  // ── REGLA ESPECIAL: Charlas de socialización NO tienen evaluación ──
+  if (tipo === "Charla" || tipo === "Socialización" ||
+      (temasTratados && (
+        temasTratados.toLowerCase().includes("socialización") ||
+        temasTratados.toLowerCase().includes("socializacion")
+      ))) {
+    console.log('[check-batch] Evento es Charla/Socialización - sin evaluación por regla');
+    const results: Record<string, boolean> = {};
+    for (const id of idEmpleadoCores) results[id] = true;
+    return NextResponse.json(
+      { success: true, hasEvaluaciones: false, results },
+      { headers: { "Cache-Control": "no-store, no-cache, must-revalidate", "Pragma": "no-cache" } }
+    );
+  }
+
   if (!Array.isArray(idEmpleadoCores) || idEmpleadoCores.length === 0) {
     return NextResponse.json({ success: false, message: "idEmpleadoCores requerido" }, { status: 400 });
   }
@@ -64,17 +82,12 @@ export async function POST(request: NextRequest) {
   const headers = getSGSSTHeaders();
   const base = getSGSSTUrl;
 
-  // ── 1. Check if there are ANY active plantillas for this year ──
+  // ── 1. Check if there are active plantillas for this year AND these specific programaciones ──
   const currentYear = new Date().getFullYear().toString();
-  const plntFormula = encodeURIComponent(
-    `AND({${pF.ESTADO}}="Activa", {${pF.VIGENCIA}}="${currentYear}")`
-  );
-  const plntUrl = `${base(plantillasEvalTableId)}?returnFieldsByFieldId=true&filterByFormula=${plntFormula}&fields[]=${pF.CODIGO}`;
-  const plntRes = await fetch(plntUrl, { headers, cache: "no-store" });
-  const plntData = plntRes.ok ? await plntRes.json() : { records: [] };
 
-  if (!plntData.records || plntData.records.length === 0) {
-    // No active evaluations exist — all employees can sign
+  // Si no hay programaciones específicas (evento "Otra" o sin vincular), NO tiene evaluaciones
+  if (!progCapIds || progCapIds.length === 0) {
+    console.log('[check-batch] No hay progCapIds - evento sin evaluación');
     const results: Record<string, boolean> = {};
     for (const id of idEmpleadoCores) results[id] = true;
     return NextResponse.json(
@@ -82,6 +95,40 @@ export async function POST(request: NextRequest) {
       { headers: { "Cache-Control": "no-store, no-cache, must-revalidate", "Pragma": "no-cache" } }
     );
   }
+
+  // CÓDIGO REMOVIDO - Ya no verificamos plantillas generales
+  /*
+  if (!progCapIds || progCapIds.length === 0) {
+  */
+
+  // Verificar si existe alguna plantilla activa vinculada a estas programaciones específicas
+  console.log('[check-batch] Verificando plantillas para progCapIds:', progCapIds);
+  {
+  // Verificar si existe alguna plantilla activa vinculada a estas programaciones específicas
+  const progFormulaParts = progCapIds.map(pid => `FIND("${pid}", ARRAYJOIN({${pF.PROGRAMACIONES}})) > 0`);
+  const plntFormula = encodeURIComponent(
+    `AND({${pF.ESTADO}}="Activa", {${pF.VIGENCIA}}="${currentYear}", OR(${progFormulaParts.join(",")}))`
+  );
+  console.log('[check-batch] Formula:', plntFormula);
+  const plntUrl = `${base(plantillasEvalTableId)}?returnFieldsByFieldId=true&filterByFormula=${plntFormula}&fields[]=${pF.CODIGO}&fields[]=${pF.PROGRAMACIONES}`;
+  const plntRes = await fetch(plntUrl, { headers, cache: "no-store" });
+  const plntData = plntRes.ok ? await plntRes.json() : { records: [] };
+
+  console.log('[check-batch] Plantillas encontradas:', plntData.records?.length || 0);
+
+  if (!plntData.records || plntData.records.length === 0) {
+    // No hay plantillas activas para estas programaciones específicas — todos pueden firmar
+    console.log('[check-batch] No hay plantillas vinculadas - evento sin evaluación');
+    const results: Record<string, boolean> = {};
+    for (const id of idEmpleadoCores) results[id] = true;
+    return NextResponse.json(
+      { success: true, hasEvaluaciones: false, results },
+      { headers: { "Cache-Control": "no-store, no-cache, must-revalidate", "Pragma": "no-cache" } }
+    );
+  }
+
+  console.log('[check-batch] Plantillas encontradas - evento CON evaluación');
+}
 
   // ── 2. Fetch all EvalAplicadas with status "Aprobada" for these employees ──
   // Build formula: OR(id1, id2, ...) with estado = Aprobada
