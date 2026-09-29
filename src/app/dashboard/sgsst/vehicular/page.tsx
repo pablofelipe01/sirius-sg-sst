@@ -84,6 +84,27 @@ export default function SeguimientoVehicularPage() {
     aplicarFiltros();
   }, [vehiculos, searchTerm, estadoFilter, tipoFilter]);
 
+  // Agrupar vehículos por colaborador
+  const vehiculosPorColaborador = filteredVehiculos.reduce((acc, vehiculo) => {
+    const key = vehiculo.idPersonalCore || 'sin-asignar';
+    if (!acc[key]) {
+      acc[key] = {
+        colaborador: {
+          id: vehiculo.idPersonalCore,
+          nombre: vehiculo.nombreColaborador,
+          area: vehiculo.areaColaborador,
+        },
+        vehiculos: [],
+      };
+    }
+    acc[key].vehiculos.push(vehiculo);
+    return acc;
+  }, {} as Record<string, { colaborador: { id: string; nombre: string; area: string }; vehiculos: Vehiculo[] }>);
+
+  const colaboradoresOrdenados = Object.values(vehiculosPorColaborador).sort((a, b) =>
+    a.colaborador.nombre.localeCompare(b.colaborador.nombre)
+  );
+
   const cargarVehiculos = async () => {
     try {
       setLoading(true);
@@ -357,7 +378,7 @@ export default function SeguimientoVehicularPage() {
           </div>
         </div>
 
-        {/* Tabla de Vehículos */}
+        {/* Lista de Colaboradores y sus Vehículos */}
         {loading ? (
           <div className="flex flex-col items-center justify-center py-20">
             <Loader2 className="w-12 h-12 text-indigo-400 animate-spin mb-4" />
@@ -374,97 +395,102 @@ export default function SeguimientoVehicularPage() {
             </p>
           </div>
         ) : (
-          <div className="bg-white/10 backdrop-blur-xl rounded-xl border border-white/15 overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead className="bg-white/5 border-b border-white/10">
-                  <tr>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-white/70 uppercase tracking-wider">
-                      Estado
-                    </th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-white/70 uppercase tracking-wider">
-                      Colaborador
-                    </th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-white/70 uppercase tracking-wider">
-                      Vehículo
-                    </th>
-                    <th className="px-4 py-3 text-center text-xs font-semibold text-white/70 uppercase tracking-wider">
-                      SOAT
-                    </th>
-                    <th className="px-4 py-3 text-center text-xs font-semibold text-white/70 uppercase tracking-wider">
-                      Tecnomecánica
-                    </th>
-                    <th className="px-4 py-3 text-center text-xs font-semibold text-white/70 uppercase tracking-wider">
-                      Licencia
-                    </th>
-                    <th className="px-4 py-3 text-center text-xs font-semibold text-white/70 uppercase tracking-wider">
-                      Acciones
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-white/10">
-                  {filteredVehiculos.map((vehiculo) => (
-                    <tr
+          <div className="space-y-4">
+            {colaboradoresOrdenados.map(({ colaborador, vehiculos: vehiculosColaborador }) => (
+              <div
+                key={colaborador.id}
+                className="bg-white/10 backdrop-blur-xl rounded-xl border border-white/15 overflow-hidden"
+              >
+                {/* Header del Colaborador */}
+                <div className="bg-white/5 px-6 py-4 border-b border-white/10">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className="text-lg font-semibold text-white">{colaborador.nombre}</h3>
+                      <p className="text-sm text-white/60">{colaborador.area}</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="px-3 py-1 rounded-full bg-indigo-500/20 text-indigo-300 text-sm font-medium">
+                        {vehiculosColaborador.length} {vehiculosColaborador.length === 1 ? 'vehículo' : 'vehículos'}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Lista de Vehículos del Colaborador */}
+                <div className="divide-y divide-white/10">
+                  {vehiculosColaborador.map((vehiculo) => (
+                    <div
                       key={vehiculo.id}
-                      className="hover:bg-white/5 transition-colors"
+                      className="px-6 py-4 hover:bg-white/5 transition-colors"
                     >
-                      <td className="px-4 py-4">
-                        {getBadgeEstado(vehiculo.estadoConsolidado)}
-                      </td>
-                      <td className="px-4 py-4">
-                        <div>
-                          <p className="font-medium text-white">{vehiculo.nombreColaborador}</p>
-                          <p className="text-sm text-white/60">{vehiculo.areaColaborador}</p>
-                        </div>
-                      </td>
-                      <td className="px-4 py-4">
+                      <div className="grid grid-cols-1 md:grid-cols-6 gap-4 items-center">
+                        {/* Estado */}
                         <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-lg bg-white/10 flex items-center justify-center text-white/60">
+                          {getBadgeEstado(vehiculo.estadoConsolidado)}
+                        </div>
+
+                        {/* Vehículo */}
+                        <div className="flex items-center gap-3 md:col-span-2">
+                          <div className="w-12 h-12 rounded-lg bg-white/10 flex items-center justify-center text-white/60">
                             {getIconoVehiculo(vehiculo.tipoVehiculo)}
                           </div>
                           <div>
-                            <p className="font-semibold text-white">{vehiculo.placa}</p>
+                            <p className="font-semibold text-white text-lg">{vehiculo.placa}</p>
                             <p className="text-sm text-white/60">{vehiculo.tipoVehiculo}</p>
                           </div>
                         </div>
-                      </td>
-                      <td className="px-4 py-4 text-center">
-                        <div className="flex flex-col items-center gap-1">
-                          <Circle className={`w-4 h-4 fill-current ${getSemaforoColor(vehiculo.soat.estado)}`} />
-                          <span className="text-xs text-white/60">
-                            {formatDiasRestantes(vehiculo.soat.diasRestantes)}
-                          </span>
+
+                        {/* Documentos - Grid 3 columnas */}
+                        <div className="grid grid-cols-3 gap-3 md:col-span-2">
+                          {/* SOAT */}
+                          <div className="text-center">
+                            <p className="text-xs text-white/50 mb-1">SOAT</p>
+                            <div className="flex flex-col items-center gap-1">
+                              <Circle className={`w-4 h-4 fill-current ${getSemaforoColor(vehiculo.soat.estado)}`} />
+                              <span className="text-xs text-white/70 font-medium">
+                                {formatDiasRestantes(vehiculo.soat.diasRestantes)}
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* Tecnomecánica */}
+                          <div className="text-center">
+                            <p className="text-xs text-white/50 mb-1">Tecno</p>
+                            <div className="flex flex-col items-center gap-1">
+                              <Circle className={`w-4 h-4 fill-current ${getSemaforoColor(vehiculo.tecnomecanica.estado)}`} />
+                              <span className="text-xs text-white/70 font-medium">
+                                {formatDiasRestantes(vehiculo.tecnomecanica.diasRestantes)}
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* Licencia */}
+                          <div className="text-center">
+                            <p className="text-xs text-white/50 mb-1">Licencia</p>
+                            <div className="flex flex-col items-center gap-1">
+                              <Circle className={`w-4 h-4 fill-current ${getSemaforoColor(vehiculo.licencia.estado)}`} />
+                              <span className="text-xs text-white/70 font-medium">
+                                {vehiculo.licencia.categoria || "N/A"}
+                              </span>
+                            </div>
+                          </div>
                         </div>
-                      </td>
-                      <td className="px-4 py-4 text-center">
-                        <div className="flex flex-col items-center gap-1">
-                          <Circle className={`w-4 h-4 fill-current ${getSemaforoColor(vehiculo.tecnomecanica.estado)}`} />
-                          <span className="text-xs text-white/60">
-                            {formatDiasRestantes(vehiculo.tecnomecanica.diasRestantes)}
-                          </span>
+
+                        {/* Acciones */}
+                        <div className="flex justify-end">
+                          <button
+                            onClick={() => router.push(`/dashboard/sgsst/vehicular/${vehiculo.id}`)}
+                            className="px-4 py-2 bg-indigo-500/20 hover:bg-indigo-500/30 text-indigo-300 rounded-lg font-medium text-sm transition-colors"
+                          >
+                            Ver detalle
+                          </button>
                         </div>
-                      </td>
-                      <td className="px-4 py-4 text-center">
-                        <div className="flex flex-col items-center gap-1">
-                          <Circle className={`w-4 h-4 fill-current ${getSemaforoColor(vehiculo.licencia.estado)}`} />
-                          <span className="text-xs text-white/60">
-                            {vehiculo.licencia.categoria || "Sin licencia"}
-                          </span>
-                        </div>
-                      </td>
-                      <td className="px-4 py-4 text-center">
-                        <button
-                          onClick={() => router.push(`/dashboard/sgsst/vehicular/${vehiculo.id}`)}
-                          className="text-indigo-300 hover:text-indigo-200 font-medium text-sm"
-                        >
-                          Ver detalle
-                        </button>
-                      </td>
-                    </tr>
+                      </div>
+                    </div>
                   ))}
-                </tbody>
-              </table>
-            </div>
+                </div>
+              </div>
+            ))}
           </div>
         )}
       </main>

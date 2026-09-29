@@ -105,14 +105,19 @@ export async function POST(request: NextRequest) {
   console.log('[check-batch] Verificando plantillas para progCapIds:', progCapIds);
   {
   // Verificar si existe alguna plantilla activa vinculada a estas programaciones específicas
-  const progFormulaParts = progCapIds.map(pid => `FIND("${pid}", ARRAYJOIN({${pF.PROGRAMACIONES}})) > 0`);
+  // ARRAYJOIN sobre un campo de enlace devuelve el campo primario ("PROG-1.17-SEP"),
+  // no el recID: FIND(recId, ...) nunca coincide. Se filtra por programación en código.
   const plntFormula = encodeURIComponent(
-    `AND({${pF.ESTADO}}="Activa", {${pF.VIGENCIA}}="${currentYear}", OR(${progFormulaParts.join(",")}))`
+    `AND({${pF.ESTADO}}="Activa", {${pF.VIGENCIA}}="${currentYear}")`
   );
-  console.log('[check-batch] Formula:', plntFormula);
   const plntUrl = `${base(plantillasEvalTableId)}?returnFieldsByFieldId=true&filterByFormula=${plntFormula}&fields[]=${pF.CODIGO}&fields[]=${pF.PROGRAMACIONES}`;
   const plntRes = await fetch(plntUrl, { headers, cache: "no-store" });
-  const plntData = plntRes.ok ? await plntRes.json() : { records: [] };
+  const plntRaw = plntRes.ok ? await plntRes.json() : { records: [] };
+  const plntData = {
+    records: (plntRaw.records || []).filter((r: { fields: Record<string, unknown> }) =>
+      ((r.fields[pF.PROGRAMACIONES] as string[]) || []).some((id) => progCapIds.includes(id))
+    ),
+  };
 
   console.log('[check-batch] Plantillas encontradas:', plntData.records?.length || 0);
 

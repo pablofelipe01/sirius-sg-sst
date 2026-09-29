@@ -16,14 +16,18 @@
     "probar:excel-entregas": "tsx scripts/probar-excel-entregas.ts",
     "probar:filtros-entregas": "tsx scripts/probar-filtros-entregas.ts",
     "gen:env-example": "tsx scripts/generar-env-example.ts",
+    "subir:env-aws": "tsx scripts/subir-env-aws.ts",
     "test:inspecciones-areas": "node test-inspecciones-areas.js",
     "get-field-ids:medicina": "tsx scripts/obtener-field-ids-medicina-laboral.ts",
     "eventos:listar": "tsx scripts/listar-eventos-recientes.ts",
     "eventos:buscar": "tsx scripts/buscar-evento-fecha.ts",
-    "evaluacion:habilitar": "tsx scripts/habilitar-evaluacion.ts"
+    "evaluacion:habilitar": "tsx scripts/habilitar-evaluacion.ts",
+    "vehiculos:diff": "tsx scripts/diff-vehiculos.ts",
+    "vehiculos:corregir": "tsx scripts/corregir-vehiculos.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.995.0",
+    "@aws-sdk/client-secrets-manager": "^3.1143.0",
     "@aws-sdk/s3-request-presigner": "^3.995.0",
     "@types/jsonwebtoken": "^9.0.10",
     "airtable": "^0.12.2",
@@ -39,6 +43,7 @@
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "uuid": "^14.0.0",
+    "xlsx": "^0.18.5",
     "zod": "^4.4.3"
   },
   "devDependencies": {

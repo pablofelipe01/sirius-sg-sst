@@ -505,6 +505,7 @@ export async function GET(req: NextRequest) {
       documento: string;
       fechaEntrega: string;
       responsable: string;
+      observaciones: string;
       rows: EntregaRow[];
       fotoUrls: string[];
     }
@@ -518,6 +519,7 @@ export async function GET(req: NextRequest) {
       const motivo = (f[entregasFields.MOTIVO] as string) || "";
       const estado = (f[entregasFields.ESTADO] as string) || "";
       const responsable = (f[entregasFields.RESPONSABLE] as string) || "";
+      const observaciones = (f[entregasFields.OBSERVACIONES] as string) || "";
 
       const empInfo = personalMap.get(idEmp) || { nombre: idEmp, documento: "" };
 
@@ -575,6 +577,7 @@ export async function GET(req: NextRequest) {
         documento: empInfo.documento,
         fechaEntrega,
         responsable,
+        observaciones,
         rows,
         fotoUrls,
       });
@@ -1060,6 +1063,15 @@ export async function GET(req: NextRequest) {
         color: BRAND.AZUL_BARRANCA,
         tamano: 9,
       });
+
+      // ── Observaciones (si existen) ─────────────────────
+      if (acta.observaciones) {
+        espacio(10);
+        y = parrafo(y, `Observaciones: ${acta.observaciones}`, {
+          fondo: BRAND.BLANCO,
+          tamano: 8.5,
+        });
+      }
 
       setFill(BRAND.VERDE_ALEGRIA);
       doc.rect(MARGIN, y, CONTENT_W, 2, "F");

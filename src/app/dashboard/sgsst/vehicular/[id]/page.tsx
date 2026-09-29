@@ -14,6 +14,7 @@ interface VehiculoDetalle {
   tipoVehiculo: string;
   propietarioNombre: string;
   propietarioTipo: string;
+  propietarioDocumento: string;
   soat: {
     estado: string;
     fechaVencimiento: string | null;
@@ -47,20 +48,27 @@ export default function VehiculoDetallePage({ params }: { params: Promise<{ id: 
   const cargarVehiculo = async () => {
     try {
       setLoading(true);
+      setError(null);
 
-      // Por ahora, obtener de la lista general y filtrar
-      const response = await fetch("/api/sgsst/vehicular");
-      if (!response.ok) throw new Error("Error al cargar vehículo");
+      const response = await fetch(`/api/sgsst/vehicular/vehiculos/${resolvedParams.id}`);
+
+      if (!response.ok) {
+        if (response.status === 404) {
+          setError("Vehículo no encontrado");
+        } else {
+          setError("Error al cargar vehículo");
+        }
+        return;
+      }
 
       const data = await response.json();
-      const vehiculoEncontrado = data.vehiculos.find((v: VehiculoDetalle) => v.id === resolvedParams.id);
-
-      if (!vehiculoEncontrado) {
-        setError("Vehículo no encontrado");
+      if (data.success && data.vehiculo) {
+        setVehiculo(data.vehiculo);
       } else {
-        setVehiculo(vehiculoEncontrado);
+        setError("Vehículo no encontrado");
       }
     } catch (err) {
+      console.error("Error cargando vehículo:", err);
       setError("Error de conexión");
     } finally {
       setLoading(false);
@@ -187,20 +195,33 @@ export default function VehiculoDetallePage({ params }: { params: Promise<{ id: 
                 <p className="text-lg font-semibold text-white">{vehiculo.tipoVehiculo}</p>
               </div>
               <div>
-                <p className="text-sm text-white/50 mb-1">Propietario</p>
-                <p className="text-lg font-semibold text-white">{vehiculo.propietarioNombre}</p>
-              </div>
-              <div>
-                <p className="text-sm text-white/50 mb-1">Tipo de Propietario</p>
-                <p className="text-lg font-semibold text-white">{vehiculo.propietarioTipo}</p>
-              </div>
-              <div>
-                <p className="text-sm text-white/50 mb-1">Colaborador</p>
+                <p className="text-sm text-white/50 mb-1">Colaborador Asignado</p>
                 <p className="text-lg font-semibold text-white">{vehiculo.nombreColaborador}</p>
               </div>
               <div>
                 <p className="text-sm text-white/50 mb-1">Área</p>
                 <p className="text-lg font-semibold text-white">{vehiculo.areaColaborador}</p>
+              </div>
+            </div>
+
+            {/* Información del Propietario - Sección destacada */}
+            <div className="mt-6 pt-6 border-t border-white/10">
+              <h3 className="text-lg font-bold text-white mb-4">Información del Propietario</h3>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <p className="text-sm text-white/50 mb-1">Nombre del Propietario</p>
+                  <p className="text-lg font-semibold text-white">{vehiculo.propietarioNombre}</p>
+                </div>
+                <div>
+                  <p className="text-sm text-white/50 mb-1">Tipo de Propietario</p>
+                  <p className="text-lg font-semibold text-white">{vehiculo.propietarioTipo}</p>
+                </div>
+                <div>
+                  <p className="text-sm text-white/50 mb-1">Documento del Propietario</p>
+                  <p className="text-lg font-semibold text-white">
+                    {vehiculo.propietarioDocumento || 'No registrado'}
+                  </p>
+                </div>
               </div>
             </div>
           </div>

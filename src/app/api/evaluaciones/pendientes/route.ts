@@ -29,8 +29,11 @@ export async function GET(request: NextRequest) {
   console.log('[pendientes] Request params:', { idEmpleadoCore, progCapId, tipo, temasTratados });
 
   // ── REGLA ESPECIAL: Charlas de socialización NO tienen evaluación ──
+  // Con progCapId manda la plantilla vinculada a esa programación: buscar la
+  // palabra en los temas tratados daba falsos positivos ("se realizó la
+  // socialización de la actividad…" en una capacitación con evaluación).
   if (tipo === "Charla" || tipo === "Socialización" ||
-      (temasTratados && (
+      (!progCapId && temasTratados && (
         temasTratados.toLowerCase().includes("socialización") ||
         temasTratados.toLowerCase().includes("socializacion")
       ))) {
@@ -112,20 +115,14 @@ export async function GET(request: NextRequest) {
   }
 
   // ── 4. Obtener plantillas activas para el año en curso ─
-  // Si no hay progCapId, filtrar también por programaciones del mes actual
-  let plntFormula: string;
-  if (!progCapId && progCapIdsDelMes.length > 0) {
-    // Filtrar por estado, vigencia Y programaciones del mes
-    const progFilters = progCapIdsDelMes.map(id => `FIND("${id}", ARRAYJOIN({${pF.PROGRAMACIONES}}))`).join(",");
-    plntFormula = encodeURIComponent(
-      `AND({${pF.ESTADO}}="Activa", {${pF.VIGENCIA}}="${currentYear}", OR(${progFilters}))`
-    );
-  } else {
-    // Filtrar solo por estado y vigencia (cuando hay progCapId o no hay programaciones del mes)
-    plntFormula = encodeURIComponent(
-      `AND({${pF.ESTADO}}="Activa", {${pF.VIGENCIA}}="${currentYear}")`
-    );
-  }
+  // Con progCapId: solo las plantillas vinculadas a esa programación.
+  // Sin progCapId: las vinculadas a programaciones del mes (si las hay).
+  // ARRAYJOIN sobre un campo de enlace devuelve el campo primario, no el recID,
+  // así que el filtro por programación se hace en código.
+  const plntFormula = encodeURIComponent(
+    `AND({${pF.ESTADO}}="Activa", {${pF.VIGENCIA}}="${currentYear}")`
+  );
+  const progsFiltro = progCapId ? [progCapId] : progCapIdsDelMes;
 
   const plntUrl = `${base(plantillasEvalTableId)}?returnFieldsByFieldId=true&filterByFormula=${plntFormula}`;
   const plntRes = await fetch(plntUrl, { headers, cache: "no-store" });
@@ -134,8 +131,12 @@ export async function GET(request: NextRequest) {
   }
   const plntData = await plntRes.json();
 
-  // ── 3. Filtrar por Población Objetivo ────────────────
+  // ── 3. Filtrar por programación y Población Objetivo ─
   const plantillasElegibles = (plntData.records || []).filter((r: { fields: Record<string, unknown> }) => {
+    if (progsFiltro.length > 0) {
+      const progsPlantilla = (r.fields[pF.PROGRAMACIONES] as string[]) || [];
+      if (!progsPlantilla.some((id) => progsFiltro.includes(id))) return false;
+    }
     const poblacion = (r.fields[pF.POBLACION] as string) || "";
     return !poblacion || poblacion === "Todos los Colaboradores"
       || comites.some((c) => poblacion.includes(c));
