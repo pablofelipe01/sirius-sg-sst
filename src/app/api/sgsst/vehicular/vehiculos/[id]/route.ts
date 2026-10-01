@@ -109,6 +109,7 @@ export async function GET(request: NextRequest, context: Params) {
     const soatDoc = documentos.find(
       (d: any) => d.fields[vehConfig.documentosVehicularesFields.TIPO_DOCUMENTO] === "SOAT"
     );
+    const soatId = soatDoc?.id || null;
     const soatVencimiento = soatDoc?.fields[vehConfig.documentosVehicularesFields.FECHA_VENCIMIENTO] || null;
     const soatEstado = calcularEstado(soatVencimiento);
 
@@ -116,10 +117,12 @@ export async function GET(request: NextRequest, context: Params) {
     const tecnoDoc = documentos.find(
       (d: any) => d.fields[vehConfig.documentosVehicularesFields.TIPO_DOCUMENTO]?.includes("Tecno")
     );
+    const tecnoId = tecnoDoc?.id || null;
     const tecnoVencimiento = tecnoDoc?.fields[vehConfig.documentosVehicularesFields.FECHA_VENCIMIENTO] || null;
     const tecnoEstado = calcularEstado(tecnoVencimiento);
 
     // 3. Obtener licencia del colaborador
+    let licId: string | null = null;
     let licVencimiento: string | null = null;
     let licEstado = calcularEstado(null);
     let licCategoria = null;
@@ -135,6 +138,7 @@ export async function GET(request: NextRequest, context: Params) {
       const licencia = licData.records?.[0];
 
       if (licencia) {
+        licId = licencia.id;
         licVencimiento = licencia.fields[vehConfig.licenciasConduccionFields.FECHA_VENCIMIENTO] || null;
         licEstado = calcularEstado(licVencimiento);
         licCategoria = licencia.fields[vehConfig.licenciasConduccionFields.CATEGORIA] || null;
@@ -193,16 +197,19 @@ export async function GET(request: NextRequest, context: Params) {
       propietarioDocumento: fields[vehConfig.vehiculosFields.PROPIETARIO_DOCUMENTO] || "",
       activo: fields[vehConfig.vehiculosFields.ACTIVO] || false,
       soat: {
+        id: soatId,
         estado: soatEstado.estado,
         fechaVencimiento: soatVencimiento,
         diasRestantes: soatEstado.diasRestantes,
       },
       tecnomecanica: {
+        id: tecnoId,
         estado: tecnoEstado.estado,
         fechaVencimiento: tecnoVencimiento,
         diasRestantes: tecnoEstado.diasRestantes,
       },
       licencia: {
+        id: licId,
         estado: licEstado.estado,
         fechaVencimiento: licVencimiento,
         diasRestantes: licEstado.diasRestantes,

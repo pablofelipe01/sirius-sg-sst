@@ -18,10 +18,13 @@ export const airtableInsumosConfig = {
     STOCK_MINIMO: process.env.AIRTABLE_INS_STOCK_MINIMO!,
     ESTADO: process.env.AIRTABLE_INS_ESTADO!,
     IMAGEN: process.env.AIRTABLE_INS_IMAGEN!,
+    ID_AREA_ORIGEN: process.env.AIRTABLE_INS_ID_AREA_ORIGEN!,
+    FICHA_TECNICA: process.env.AIRTABLE_INS_FICHA_TECNICA!,
     REFERENCIA_COMERCIAL: process.env.AIRTABLE_INS_REFERENCIA_COMERCIAL!,
     RESPONSABLE: process.env.AIRTABLE_INS_RESPONSABLE!,
     CATEGORIA: process.env.AIRTABLE_INS_CATEGORIA!,
     MOVIMIENTOS: process.env.AIRTABLE_INS_MOVIMIENTOS!,
+    AREAS_CONSUMIDORAS: process.env.AIRTABLE_INS_AREAS_CONSUMIDORAS!,
   },
 
   // ── Tabla "Categoria Insumo" ──────────────────────────

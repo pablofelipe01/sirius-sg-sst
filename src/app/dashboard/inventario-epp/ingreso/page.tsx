@@ -51,7 +51,22 @@ export default function IngresoEPPPage() {
   const [lineas, setLineas] = useState<LineaIngreso[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [showSelector, setShowSelector] = useState(false);
+  const [showCrearEPP, setShowCrearEPP] = useState(false);
   const [notas, setNotas] = useState("");
+
+  // Estado del formulario de creación de EPP
+  const [nuevoEPP, setNuevoEPP] = useState({
+    nombre: "",
+    unidadMedida: "Unidad",
+    stockMinimo: 0,
+    referenciaComercial: "",
+    categoria: "EPP",
+    idAreaOrigen: "",
+    fichaTecnica: "",
+    areasConsumidoras: [] as string[],
+  });
+  const [creatingEPP, setCreatingEPP] = useState(false);
+  const [createError, setCreateError] = useState("");
 
   // Estado de envío
   const [formState, setFormState] = useState<FormState>("idle");
@@ -112,6 +127,54 @@ export default function IngresoEPPPage() {
   // ── Eliminar línea ───────────────────────────────────
   const eliminarLinea = (insumoId: string) => {
     setLineas((prev) => prev.filter((l) => l.insumoId !== insumoId));
+  };
+
+  // ── Crear nuevo EPP ──────────────────────────────────
+  const handleCrearEPP = async () => {
+    if (!nuevoEPP.nombre.trim() || !nuevoEPP.unidadMedida.trim()) {
+      setCreateError("Nombre y unidad de medida son obligatorios");
+      return;
+    }
+
+    setCreatingEPP(true);
+    setCreateError("");
+
+    try {
+      const res = await fetch("/api/insumos/epp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(nuevoEPP),
+      });
+
+      const json = await res.json();
+
+      if (!json.success) {
+        throw new Error(json.message || "Error al crear EPP");
+      }
+
+      // Agregar el nuevo EPP al catálogo y a las líneas
+      const eppCreado = json.data as InsumoEPP;
+      setCatalogo((prev) => [...prev, eppCreado]);
+      agregarLinea(eppCreado);
+
+      // Resetear formulario y cerrar modales
+      setNuevoEPP({
+        nombre: "",
+        unidadMedida: "Unidad",
+        stockMinimo: 0,
+        referenciaComercial: "",
+        categoria: "EPP",
+        idAreaOrigen: "",
+        fichaTecnica: "",
+        areasConsumidoras: [],
+      });
+      setShowCrearEPP(false);
+      setShowSelector(false);
+    } catch (err) {
+      setCreateError(err instanceof Error ? err.message : "Error desconocido");
+    } finally {
+      setCreatingEPP(false);
+    }
   };
 
   // ── Enviar ────────────────────────────────────────────
@@ -450,7 +513,7 @@ export default function IngresoEPPPage() {
           >
             {/* Barra de búsqueda */}
             <div className="p-4 border-b border-white/10">
-              <div className="relative">
+              <div className="relative mb-3">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/40" />
                 <input
                   type="text"
@@ -461,6 +524,13 @@ export default function IngresoEPPPage() {
                   className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-white/10 border border-white/15 text-white text-sm placeholder:text-white/40 focus:outline-none focus:border-teal-400/50 transition-all"
                 />
               </div>
+              <button
+                onClick={() => setShowCrearEPP(true)}
+                className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-teal-500/20 border border-teal-400/30 text-teal-300 text-sm font-medium hover:bg-teal-500/30 transition-all cursor-pointer"
+              >
+                <Plus className="w-4 h-4" />
+                Crear nuevo EPP
+              </button>
             </div>
 
             {/* Lista de EPPs */}
@@ -507,6 +577,180 @@ export default function IngresoEPPPage() {
                 className="w-full py-2 rounded-lg bg-white/5 text-white/50 text-sm hover:bg-white/10 transition-all cursor-pointer"
               >
                 Cerrar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ═══ MODAL: CREAR NUEVO EPP ═══ */}
+      {showCrearEPP && (
+        <div
+          className="fixed inset-0 z-50 flex items-start justify-center pt-20 p-4 bg-black/60 backdrop-blur-sm"
+          onClick={() => {
+            setShowCrearEPP(false);
+            setCreateError("");
+          }}
+        >
+          <div
+            className="bg-white/10 backdrop-blur-2xl border border-white/20 rounded-2xl max-w-lg w-full shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="p-6 border-b border-white/10">
+              <h3 className="text-lg font-bold text-white">Crear nuevo EPP</h3>
+              <p className="text-xs text-white/50 mt-1">
+                Completa los datos del nuevo elemento de protección personal
+              </p>
+            </div>
+
+            {/* Form */}
+            <div className="p-6 space-y-4">
+              {/* Nombre */}
+              <div>
+                <label className="block text-xs text-white/50 mb-1.5">
+                  Nombre del EPP <span className="text-red-400">*</span>
+                </label>
+                <input
+                  type="text"
+                  placeholder="Ej: Casco de seguridad"
+                  value={nuevoEPP.nombre}
+                  onChange={(e) => setNuevoEPP({ ...nuevoEPP, nombre: e.target.value })}
+                  className="w-full px-4 py-2.5 rounded-xl bg-white/10 border border-white/15 text-white text-sm placeholder:text-white/30 focus:outline-none focus:border-teal-400/50 transition-all"
+                />
+              </div>
+
+              {/* Unidad de medida */}
+              <div>
+                <label className="block text-xs text-white/50 mb-1.5">
+                  Unidad de medida <span className="text-red-400">*</span>
+                </label>
+                <select
+                  value={nuevoEPP.unidadMedida}
+                  onChange={(e) => setNuevoEPP({ ...nuevoEPP, unidadMedida: e.target.value })}
+                  className="w-full px-4 py-2.5 rounded-xl bg-white/10 border border-white/15 text-white text-sm focus:outline-none focus:border-teal-400/50 transition-all"
+                >
+                  <option value="Unidad" className="bg-gray-800">Unidad</option>
+                  <option value="Par" className="bg-gray-800">Par</option>
+                  <option value="Juego" className="bg-gray-800">Juego</option>
+                  <option value="Caja" className="bg-gray-800">Caja</option>
+                  <option value="Paquete" className="bg-gray-800">Paquete</option>
+                </select>
+              </div>
+
+              {/* Categoría */}
+              <div>
+                <label className="block text-xs text-white/50 mb-1.5">Categoría</label>
+                <select
+                  value={nuevoEPP.categoria}
+                  onChange={(e) => setNuevoEPP({ ...nuevoEPP, categoria: e.target.value })}
+                  className="w-full px-4 py-2.5 rounded-xl bg-white/10 border border-white/15 text-white text-sm focus:outline-none focus:border-teal-400/50 transition-all"
+                >
+                  <option value="EPP" className="bg-gray-800">EPP</option>
+                  <option value="Dotación" className="bg-gray-800">Dotación</option>
+                </select>
+              </div>
+
+              {/* Stock mínimo */}
+              <div>
+                <label className="block text-xs text-white/50 mb-1.5">Stock mínimo</label>
+                <input
+                  type="number"
+                  min={0}
+                  value={nuevoEPP.stockMinimo}
+                  onChange={(e) =>
+                    setNuevoEPP({ ...nuevoEPP, stockMinimo: parseInt(e.target.value) || 0 })
+                  }
+                  className="w-full px-4 py-2.5 rounded-xl bg-white/10 border border-white/15 text-white text-sm focus:outline-none focus:border-teal-400/50 transition-all"
+                />
+              </div>
+
+              {/* Referencia comercial */}
+              <div>
+                <label className="block text-xs text-white/50 mb-1.5">
+                  Referencia comercial (opcional)
+                </label>
+                <input
+                  type="text"
+                  placeholder="Ej: REF-12345"
+                  value={nuevoEPP.referenciaComercial}
+                  onChange={(e) =>
+                    setNuevoEPP({ ...nuevoEPP, referenciaComercial: e.target.value })
+                  }
+                  className="w-full px-4 py-2.5 rounded-xl bg-white/10 border border-white/15 text-white text-sm placeholder:text-white/30 focus:outline-none focus:border-teal-400/50 transition-all"
+                />
+              </div>
+
+              {/* ID Área Origen */}
+              <div>
+                <label className="block text-xs text-white/50 mb-1.5">
+                  ID Área Origen (opcional)
+                </label>
+                <input
+                  type="text"
+                  placeholder="Ej: EPP-001"
+                  value={nuevoEPP.idAreaOrigen}
+                  onChange={(e) =>
+                    setNuevoEPP({ ...nuevoEPP, idAreaOrigen: e.target.value })
+                  }
+                  className="w-full px-4 py-2.5 rounded-xl bg-white/10 border border-white/15 text-white text-sm placeholder:text-white/30 focus:outline-none focus:border-teal-400/50 transition-all"
+                />
+                <p className="text-[10px] text-white/30 mt-1">
+                  Identificador del área o departamento de origen
+                </p>
+              </div>
+
+              {/* Ficha Técnica */}
+              <div>
+                <label className="block text-xs text-white/50 mb-1.5">
+                  Ficha técnica (opcional)
+                </label>
+                <textarea
+                  rows={3}
+                  placeholder="Descripción técnica del EPP, materiales, especificaciones..."
+                  value={nuevoEPP.fichaTecnica}
+                  onChange={(e) =>
+                    setNuevoEPP({ ...nuevoEPP, fichaTecnica: e.target.value })
+                  }
+                  className="w-full px-4 py-2.5 rounded-xl bg-white/10 border border-white/15 text-white text-sm placeholder:text-white/30 focus:outline-none focus:border-teal-400/50 transition-all resize-none"
+                />
+              </div>
+
+              {/* Error */}
+              {createError && (
+                <div className="p-3 rounded-lg bg-red-500/10 border border-red-400/20">
+                  <p className="text-xs text-red-300">{createError}</p>
+                </div>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="p-4 border-t border-white/10 flex gap-3">
+              <button
+                onClick={() => {
+                  setShowCrearEPP(false);
+                  setCreateError("");
+                }}
+                className="flex-1 py-2.5 rounded-xl bg-white/5 border border-white/10 text-white/50 text-sm font-medium hover:bg-white/10 transition-all cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleCrearEPP}
+                disabled={creatingEPP || !nuevoEPP.nombre.trim()}
+                className="flex-1 py-2.5 rounded-xl bg-teal-500/30 border border-teal-400/40 text-teal-300 text-sm font-semibold hover:bg-teal-500/40 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              >
+                {creatingEPP ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Creando...
+                  </>
+                ) : (
+                  <>
+                    <Plus className="w-4 h-4" />
+                    Crear EPP
+                  </>
+                )}
               </button>
             </div>
           </div>

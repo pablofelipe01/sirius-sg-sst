@@ -108,6 +108,142 @@ async function calcularStockDesdeMovimientos(
 }
 
 /**
+ * POST /api/insumos/epp
+ * Crea un nuevo insumo EPP en Airtable.
+ */
+export async function POST(request: Request) {
+  try {
+    const body = await request.json();
+    const {
+      nombre,
+      unidadMedida,
+      stockMinimo,
+      referenciaComercial,
+      categoria,
+      responsable,
+      idAreaOrigen,
+      fichaTecnica,
+      areasConsumidoras
+    } = body;
+
+    // Validaciones
+    if (!nombre || !unidadMedida) {
+      return NextResponse.json(
+        { success: false, message: "Nombre y unidad de medida son obligatorios" },
+        { status: 400 }
+      );
+    }
+
+    const { insumoTableId, eppCategoryRecordId, dotacionCategoryRecordId } = airtableInsumosConfig;
+    const url = getInsumosUrl(insumoTableId);
+    const headers = getInsumosHeaders();
+
+    // Determinar categoría (EPP por defecto, o Dotación si se especifica)
+    let categoriaId = eppCategoryRecordId;
+    if (categoria === "Dotación" && dotacionCategoryRecordId) {
+      categoriaId = dotacionCategoryRecordId;
+    }
+
+    // Crear el registro en Airtable
+    const fields: Record<string, unknown> = {
+      [insumoFields.NOMBRE]: nombre,
+      [insumoFields.UNIDAD_MEDIDA]: unidadMedida,
+      [insumoFields.STOCK_MINIMO]: stockMinimo || 0,
+      [insumoFields.ESTADO]: "Activo",
+      [insumoFields.CATEGORIA]: [categoriaId],
+    };
+
+    // Agregar campos opcionales si se proporcionaron
+    if (referenciaComercial && referenciaComercial.trim()) {
+      fields[insumoFields.REFERENCIA_COMERCIAL] = referenciaComercial;
+    }
+
+    if (responsable && responsable.trim()) {
+      fields[insumoFields.RESPONSABLE] = responsable;
+    }
+
+    if (idAreaOrigen && idAreaOrigen.trim()) {
+      fields[insumoFields.ID_AREA_ORIGEN] = idAreaOrigen;
+    }
+
+    if (fichaTecnica && fichaTecnica.trim()) {
+      fields[insumoFields.FICHA_TECNICA] = fichaTecnica;
+    }
+
+    if (areasConsumidoras && Array.isArray(areasConsumidoras) && areasConsumidoras.length > 0) {
+      fields[insumoFields.AREAS_CONSUMIDORAS] = areasConsumidoras;
+    }
+
+    const payload = {
+      records: [{ fields }],
+      typecast: true,
+    };
+
+    const response = await fetch(`${url}?returnFieldsByFieldId=true`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(payload),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error("Airtable API error:", response.status, errorText);
+      console.error("Payload enviado:", JSON.stringify(payload, null, 2));
+
+      // Intentar parsear el error de Airtable para dar más detalles
+      let errorDetails = "Error al crear el insumo en Airtable";
+      try {
+        const errorJson = JSON.parse(errorText);
+        errorDetails = errorJson.error?.message || errorDetails;
+      } catch {
+        // Si no se puede parsear, usar el texto completo
+        errorDetails = errorText || errorDetails;
+      }
+
+      return NextResponse.json(
+        { success: false, message: errorDetails },
+        { status: 500 }
+      );
+    }
+
+    const data = await response.json();
+    const created = data.records?.[0];
+
+    if (!created) {
+      return NextResponse.json(
+        { success: false, message: "No se pudo crear el registro en Airtable" },
+        { status: 500 }
+      );
+    }
+
+    const f = created.fields;
+
+    // Retornar el insumo creado en formato normalizado
+    const nuevoInsumo: InsumoEPP = {
+      id: created.id,
+      codigo: (f[insumoFields.CODIGO] as string) || "",
+      nombre: (f[insumoFields.NOMBRE] as string) || "",
+      unidadMedida: (f[insumoFields.UNIDAD_MEDIDA] as string) || "",
+      stockMinimo: (f[insumoFields.STOCK_MINIMO] as number) || 0,
+      stockActual: 0,
+      estado: (f[insumoFields.ESTADO] as string) || "Activo",
+      imagen: null,
+      referenciaComercial: (f[insumoFields.REFERENCIA_COMERCIAL] as { value: string } | undefined)?.value || "",
+      responsable: (f[insumoFields.RESPONSABLE] as string) || "",
+      categoriaIds: (f[insumoFields.CATEGORIA] as string[]) || [],
+    };
+
+    return NextResponse.json({ success: true, data: nuevoInsumo });
+  } catch (error) {
+    console.error("Error creating EPP insumo:", error);
+    return NextResponse.json(
+      { success: false, message: "Error interno del servidor" },
+      { status: 500 }
+    );
+  }
+}
+
+/**
  * GET /api/insumos/epp
  * Devuelve todos los insumos de categoría EPP y Dotación desde Airtable (Sirius Insumos Core).
  * Filtra por estado activo en Airtable y por categoría EPP/Dotación en el servidor.

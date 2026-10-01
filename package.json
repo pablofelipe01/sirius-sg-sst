@@ -17,6 +17,7 @@
     "probar:filtros-entregas": "tsx scripts/probar-filtros-entregas.ts",
     "gen:env-example": "tsx scripts/generar-env-example.ts",
     "subir:env-aws": "tsx scripts/subir-env-aws.ts",
+    "actualizar:secret-copasst": "node scripts/update-aws-secret.js",
     "test:inspecciones-areas": "node test-inspecciones-areas.js",
     "get-field-ids:medicina": "tsx scripts/obtener-field-ids-medicina-laboral.ts",
     "eventos:listar": "tsx scripts/listar-eventos-recientes.ts",

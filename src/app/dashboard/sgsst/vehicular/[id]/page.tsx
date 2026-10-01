@@ -3,7 +3,7 @@
 import { use, useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
-import { ChevronLeft, Loader2, Car, Calendar, FileText, AlertCircle, CheckCircle, Clock } from "lucide-react";
+import { ChevronLeft, Loader2, Car, Calendar, FileText, AlertCircle, CheckCircle, Clock, Edit2, Save, X } from "lucide-react";
 
 interface VehiculoDetalle {
   id: string;
@@ -16,16 +16,19 @@ interface VehiculoDetalle {
   propietarioTipo: string;
   propietarioDocumento: string;
   soat: {
+    id: string | null;
     estado: string;
     fechaVencimiento: string | null;
     diasRestantes: number | null;
   };
   tecnomecanica: {
+    id: string | null;
     estado: string;
     fechaVencimiento: string | null;
     diasRestantes: number | null;
   };
   licencia: {
+    id: string | null;
     estado: string;
     fechaVencimiento: string | null;
     diasRestantes: number | null;
@@ -34,12 +37,26 @@ interface VehiculoDetalle {
   estadoConsolidado: "ok" | "alerta" | "critico";
 }
 
+const CATEGORIAS_LICENCIA = ["A1", "A2", "B1", "B2", "B3", "C1", "C2", "C3"];
+
 export default function VehiculoDetallePage({ params }: { params: Promise<{ id: string }> }) {
   const router = useRouter();
   const resolvedParams = use(params);
   const [vehiculo, setVehiculo] = useState<VehiculoDetalle | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // Estados para formularios de edición
+  const [editandoSoat, setEditandoSoat] = useState(false);
+  const [editandoTecno, setEditandoTecno] = useState(false);
+  const [editandoLicencia, setEditandoLicencia] = useState(false);
+  const [guardando, setGuardando] = useState(false);
+
+  // Estados para formularios
+  const [soatFecha, setSoatFecha] = useState("");
+  const [tecnoFecha, setTecnoFecha] = useState("");
+  const [licenciaFecha, setLicenciaFecha] = useState("");
+  const [licenciaCategoria, setLicenciaCategoria] = useState("");
 
   useEffect(() => {
     cargarVehiculo();
@@ -64,6 +81,11 @@ export default function VehiculoDetallePage({ params }: { params: Promise<{ id: 
       const data = await response.json();
       if (data.success && data.vehiculo) {
         setVehiculo(data.vehiculo);
+        // Inicializar formularios con valores actuales
+        setSoatFecha(data.vehiculo.soat.fechaVencimiento || "");
+        setTecnoFecha(data.vehiculo.tecnomecanica.fechaVencimiento || "");
+        setLicenciaFecha(data.vehiculo.licencia.fechaVencimiento || "");
+        setLicenciaCategoria(data.vehiculo.licencia.categoria || "");
       } else {
         setError("Vehículo no encontrado");
       }
@@ -72,6 +94,89 @@ export default function VehiculoDetallePage({ params }: { params: Promise<{ id: 
       setError("Error de conexión");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const guardarDocumento = async (tipo: "SOAT" | "Tecnomecánica") => {
+    if (!vehiculo) return;
+
+    try {
+      setGuardando(true);
+      const fecha = tipo === "SOAT" ? soatFecha : tecnoFecha;
+      const docId = tipo === "SOAT" ? vehiculo.soat.id : vehiculo.tecnomecanica.id;
+
+      if (!fecha) {
+        alert("La fecha de vencimiento es obligatoria");
+        return;
+      }
+
+      const payload = docId
+        ? { id: docId, fechaVencimiento: fecha }
+        : { vehiculoId: vehiculo.id, tipoDocumento: tipo, fechaVencimiento: fecha };
+
+      const response = await fetch("/api/sgsst/vehicular/documentos", {
+        method: docId ? "PUT" : "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        throw new Error("Error al guardar documento");
+      }
+
+      // Recargar datos
+      await cargarVehiculo();
+      setEditandoSoat(false);
+      setEditandoTecno(false);
+      alert(`${tipo} actualizado exitosamente`);
+    } catch (err) {
+      console.error("Error guardando documento:", err);
+      alert("Error al guardar. Intente nuevamente.");
+    } finally {
+      setGuardando(false);
+    }
+  };
+
+  const guardarLicencia = async () => {
+    if (!vehiculo) return;
+
+    try {
+      setGuardando(true);
+
+      if (!licenciaFecha || !licenciaCategoria) {
+        alert("La fecha de vencimiento y categoría son obligatorias");
+        return;
+      }
+
+      const payload = vehiculo.licencia.id
+        ? { id: vehiculo.licencia.id, fechaVencimiento: licenciaFecha, categoria: licenciaCategoria }
+        : {
+            idPersonalCore: vehiculo.idPersonalCore,
+            numeroLicencia: "N/A",
+            categoria: licenciaCategoria,
+            fechaVencimiento: licenciaFecha,
+          };
+
+      const response = await fetch("/api/sgsst/vehicular/licencias", {
+        method: vehiculo.licencia.id ? "PUT" : "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Error al guardar licencia");
+      }
+
+      // Recargar datos
+      await cargarVehiculo();
+      setEditandoLicencia(false);
+      alert("Licencia actualizada exitosamente");
+    } catch (err: any) {
+      console.error("Error guardando licencia:", err);
+      alert(err.message || "Error al guardar. Intente nuevamente.");
+    } finally {
+      setGuardando(false);
     }
   };
 
@@ -237,24 +342,66 @@ export default function VehiculoDetallePage({ params }: { params: Promise<{ id: 
                 </h3>
                 {getEstadoBadge(vehiculo.soat.estado)}
               </div>
-              <div className="space-y-3">
-                <div>
-                  <p className="text-sm text-white/50 mb-1">Fecha de Vencimiento</p>
-                  <p className="text-base font-medium text-white">{formatFecha(vehiculo.soat.fechaVencimiento)}</p>
-                </div>
-                {vehiculo.soat.diasRestantes !== null && (
+
+              {!editandoSoat ? (
+                <div className="space-y-3">
                   <div>
-                    <p className="text-sm text-white/50 mb-1">Días Restantes</p>
-                    <p className={`text-2xl font-bold ${
-                      vehiculo.soat.diasRestantes < 0 ? "text-red-400" :
-                      vehiculo.soat.diasRestantes <= 30 ? "text-amber-400" :
-                      "text-emerald-400"
-                    }`}>
-                      {vehiculo.soat.diasRestantes < 0 ? `${Math.abs(vehiculo.soat.diasRestantes)} días vencido` : `${vehiculo.soat.diasRestantes} días`}
-                    </p>
+                    <p className="text-sm text-white/50 mb-1">Fecha de Vencimiento</p>
+                    <p className="text-base font-medium text-white">{formatFecha(vehiculo.soat.fechaVencimiento)}</p>
                   </div>
-                )}
-              </div>
+                  {vehiculo.soat.diasRestantes !== null && (
+                    <div>
+                      <p className="text-sm text-white/50 mb-1">Días Restantes</p>
+                      <p className={`text-2xl font-bold ${
+                        vehiculo.soat.diasRestantes < 0 ? "text-red-400" :
+                        vehiculo.soat.diasRestantes <= 30 ? "text-amber-400" :
+                        "text-emerald-400"
+                      }`}>
+                        {vehiculo.soat.diasRestantes < 0 ? `${Math.abs(vehiculo.soat.diasRestantes)} días vencido` : `${vehiculo.soat.diasRestantes} días`}
+                      </p>
+                    </div>
+                  )}
+                  <button
+                    onClick={() => setEditandoSoat(true)}
+                    className="mt-4 w-full flex items-center justify-center gap-2 px-4 py-2 bg-indigo-500/20 hover:bg-indigo-500/30 text-indigo-300 rounded-lg transition-all border border-indigo-400/30"
+                  >
+                    <Edit2 className="w-4 h-4" />
+                    Actualizar
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <div>
+                    <label className="block text-sm text-white/50 mb-2">Fecha de Vencimiento</label>
+                    <input
+                      type="date"
+                      value={soatFecha}
+                      onChange={(e) => setSoatFecha(e.target.value)}
+                      className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                    />
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => guardarDocumento("SOAT")}
+                      disabled={guardando}
+                      className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 rounded-lg transition-all border border-emerald-400/30 disabled:opacity-50"
+                    >
+                      {guardando ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                      Guardar
+                    </button>
+                    <button
+                      onClick={() => {
+                        setEditandoSoat(false);
+                        setSoatFecha(vehiculo.soat.fechaVencimiento || "");
+                      }}
+                      disabled={guardando}
+                      className="px-4 py-2 bg-red-500/20 hover:bg-red-500/30 text-red-300 rounded-lg transition-all border border-red-400/30 disabled:opacity-50"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Tecnomecánica */}
@@ -266,24 +413,66 @@ export default function VehiculoDetallePage({ params }: { params: Promise<{ id: 
                 </h3>
                 {getEstadoBadge(vehiculo.tecnomecanica.estado)}
               </div>
-              <div className="space-y-3">
-                <div>
-                  <p className="text-sm text-white/50 mb-1">Fecha de Vencimiento</p>
-                  <p className="text-base font-medium text-white">{formatFecha(vehiculo.tecnomecanica.fechaVencimiento)}</p>
-                </div>
-                {vehiculo.tecnomecanica.diasRestantes !== null && (
+
+              {!editandoTecno ? (
+                <div className="space-y-3">
                   <div>
-                    <p className="text-sm text-white/50 mb-1">Días Restantes</p>
-                    <p className={`text-2xl font-bold ${
-                      vehiculo.tecnomecanica.diasRestantes < 0 ? "text-red-400" :
-                      vehiculo.tecnomecanica.diasRestantes <= 30 ? "text-amber-400" :
-                      "text-emerald-400"
-                    }`}>
-                      {vehiculo.tecnomecanica.diasRestantes < 0 ? `${Math.abs(vehiculo.tecnomecanica.diasRestantes)} días vencido` : `${vehiculo.tecnomecanica.diasRestantes} días`}
-                    </p>
+                    <p className="text-sm text-white/50 mb-1">Fecha de Vencimiento</p>
+                    <p className="text-base font-medium text-white">{formatFecha(vehiculo.tecnomecanica.fechaVencimiento)}</p>
                   </div>
-                )}
-              </div>
+                  {vehiculo.tecnomecanica.diasRestantes !== null && (
+                    <div>
+                      <p className="text-sm text-white/50 mb-1">Días Restantes</p>
+                      <p className={`text-2xl font-bold ${
+                        vehiculo.tecnomecanica.diasRestantes < 0 ? "text-red-400" :
+                        vehiculo.tecnomecanica.diasRestantes <= 30 ? "text-amber-400" :
+                        "text-emerald-400"
+                      }`}>
+                        {vehiculo.tecnomecanica.diasRestantes < 0 ? `${Math.abs(vehiculo.tecnomecanica.diasRestantes)} días vencido` : `${vehiculo.tecnomecanica.diasRestantes} días`}
+                      </p>
+                    </div>
+                  )}
+                  <button
+                    onClick={() => setEditandoTecno(true)}
+                    className="mt-4 w-full flex items-center justify-center gap-2 px-4 py-2 bg-indigo-500/20 hover:bg-indigo-500/30 text-indigo-300 rounded-lg transition-all border border-indigo-400/30"
+                  >
+                    <Edit2 className="w-4 h-4" />
+                    Actualizar
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <div>
+                    <label className="block text-sm text-white/50 mb-2">Fecha de Vencimiento</label>
+                    <input
+                      type="date"
+                      value={tecnoFecha}
+                      onChange={(e) => setTecnoFecha(e.target.value)}
+                      className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                    />
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => guardarDocumento("Tecnomecánica")}
+                      disabled={guardando}
+                      className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 rounded-lg transition-all border border-emerald-400/30 disabled:opacity-50"
+                    >
+                      {guardando ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                      Guardar
+                    </button>
+                    <button
+                      onClick={() => {
+                        setEditandoTecno(false);
+                        setTecnoFecha(vehiculo.tecnomecanica.fechaVencimiento || "");
+                      }}
+                      disabled={guardando}
+                      className="px-4 py-2 bg-red-500/20 hover:bg-red-500/30 text-red-300 rounded-lg transition-all border border-red-400/30 disabled:opacity-50"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 
@@ -296,28 +485,90 @@ export default function VehiculoDetallePage({ params }: { params: Promise<{ id: 
               </h3>
               {getEstadoBadge(vehiculo.licencia.estado)}
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div>
-                <p className="text-sm text-white/50 mb-1">Categoría</p>
-                <p className="text-lg font-semibold text-white">{vehiculo.licencia.categoria || "Sin registro"}</p>
-              </div>
-              <div>
-                <p className="text-sm text-white/50 mb-1">Fecha de Vencimiento</p>
-                <p className="text-base font-medium text-white">{formatFecha(vehiculo.licencia.fechaVencimiento)}</p>
-              </div>
-              {vehiculo.licencia.diasRestantes !== null && (
-                <div>
-                  <p className="text-sm text-white/50 mb-1">Días Restantes</p>
-                  <p className={`text-2xl font-bold ${
-                    vehiculo.licencia.diasRestantes < 0 ? "text-red-400" :
-                    vehiculo.licencia.diasRestantes <= 30 ? "text-amber-400" :
-                    "text-emerald-400"
-                  }`}>
-                    {vehiculo.licencia.diasRestantes < 0 ? `${Math.abs(vehiculo.licencia.diasRestantes)} días vencida` : `${vehiculo.licencia.diasRestantes} días`}
-                  </p>
+
+            {!editandoLicencia ? (
+              <div className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div>
+                    <p className="text-sm text-white/50 mb-1">Categoría</p>
+                    <p className="text-lg font-semibold text-white">{vehiculo.licencia.categoria || "Sin registro"}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-white/50 mb-1">Fecha de Vencimiento</p>
+                    <p className="text-base font-medium text-white">{formatFecha(vehiculo.licencia.fechaVencimiento)}</p>
+                  </div>
+                  {vehiculo.licencia.diasRestantes !== null && (
+                    <div>
+                      <p className="text-sm text-white/50 mb-1">Días Restantes</p>
+                      <p className={`text-2xl font-bold ${
+                        vehiculo.licencia.diasRestantes < 0 ? "text-red-400" :
+                        vehiculo.licencia.diasRestantes <= 30 ? "text-amber-400" :
+                        "text-emerald-400"
+                      }`}>
+                        {vehiculo.licencia.diasRestantes < 0 ? `${Math.abs(vehiculo.licencia.diasRestantes)} días vencida` : `${vehiculo.licencia.diasRestantes} días`}
+                      </p>
+                    </div>
+                  )}
                 </div>
-              )}
-            </div>
+                <button
+                  onClick={() => setEditandoLicencia(true)}
+                  className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-indigo-500/20 hover:bg-indigo-500/30 text-indigo-300 rounded-lg transition-all border border-indigo-400/30"
+                >
+                  <Edit2 className="w-4 h-4" />
+                  Actualizar
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-sm text-white/50 mb-2">Categoría *</label>
+                    <select
+                      value={licenciaCategoria}
+                      onChange={(e) => setLicenciaCategoria(e.target.value)}
+                      className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                    >
+                      <option value="" className="bg-gray-900">Seleccione...</option>
+                      {CATEGORIAS_LICENCIA.map((cat) => (
+                        <option key={cat} value={cat} className="bg-gray-900">
+                          {cat}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm text-white/50 mb-2">Fecha de Vencimiento *</label>
+                    <input
+                      type="date"
+                      value={licenciaFecha}
+                      onChange={(e) => setLicenciaFecha(e.target.value)}
+                      className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                    />
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={guardarLicencia}
+                    disabled={guardando}
+                    className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 rounded-lg transition-all border border-emerald-400/30 disabled:opacity-50"
+                  >
+                    {guardando ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                    Guardar
+                  </button>
+                  <button
+                    onClick={() => {
+                      setEditandoLicencia(false);
+                      setLicenciaFecha(vehiculo.licencia.fechaVencimiento || "");
+                      setLicenciaCategoria(vehiculo.licencia.categoria || "");
+                    }}
+                    disabled={guardando}
+                    className="px-4 py-2 bg-red-500/20 hover:bg-red-500/30 text-red-300 rounded-lg transition-all border border-red-400/30 disabled:opacity-50"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </main>
