@@ -12,6 +12,7 @@ import {
   Award,
   BookOpen,
   SkipForward,
+  PenTool,
 } from "lucide-react";
 
 // ── Types ────────────────────────────────────────────────
@@ -440,6 +441,26 @@ export default function EvaluacionFlow({
           </div>
         </div>
       ))}
+      {/* Evaluaciones terminadas pero la asistencia aún sin firmar (p. ej. al reabrir el enlace) */}
+      {!allowSkip && onFinished && !pendientes.some((p) => p.disponible && !p.aprobada) && (
+        <div className="rounded-xl border border-amber-300 bg-amber-50 p-4 space-y-3">
+          <div className="flex items-start gap-2">
+            <PenTool className="w-4 h-4 text-amber-600 mt-0.5 shrink-0" />
+            <div>
+              <p className="text-sm font-semibold text-amber-800">Falta firmar la asistencia</p>
+              <p className="text-xs text-amber-700 mt-0.5">
+                Ya completaste la evaluación, pero tu asistencia al evento aún no está firmada.
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={onFinished}
+            className="w-full py-3 rounded-xl bg-[#0154AC] text-white text-sm font-semibold hover:bg-[#0143A0] flex items-center justify-center gap-1"
+          >
+            Firmar asistencia <ChevronRight className="w-4 h-4" />
+          </button>
+        </div>
+      )}
       {allowSkip && onFinished && (
         <button
           onClick={onFinished}
